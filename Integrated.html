@@ -1,0 +1,2366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SplitStitch</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- PDF-Lib and PDF.js for PDF operations -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <!-- jsPDF for image to PDF conversion -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Cropper.js for image cropping -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" rel="stylesheet">
+
+    <style>
+        /* Base styles for Inter font */
+        body { font-family: 'Inter', sans-serif; }
+
+        /* Custom file input styling */
+        .custom-file-input::-webkit-file-upload-button { visibility: hidden; }
+        .custom-file-input::before {
+            content: 'Select File(s)';
+            display: inline-block;
+            background: #6366f1; /* Indigo 500 */
+            color: white;
+            border-radius: 0.375rem;
+            padding: 0.5rem 1rem;
+            outline: none;
+            white-space: nowrap;
+            cursor: pointer;
+            font-weight: 500;
+            margin-right: 0.75rem;
+            transition: background-color 0.2s ease-in-out;
+        }
+        .custom-file-input:hover::before { background: #4f46e5; /* Indigo 600 */ }
+        .custom-file-input:active::before { background: #4338ca; /* Indigo 700 */ }
+
+        /* Unified Loader Style */
+        .app-loader {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border-left-color: #6366f1; /* Indigo 500 */
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Tab Button Styling */
+        .app-tab-button {
+            transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+            border-bottom: 2px solid transparent;
+            color: #6b7280; /* Gray 500 */
+            font-weight: 500;
+        }
+        .app-tab-button.active {
+            background-color: #6366f1; /* Indigo 500 */
+            color: white;
+            border-color: #6366f1;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .app-tab-button:not(.active):hover {
+            background-color: #e0e7ff; /* Indigo 100 */
+            color: #4f46e5; /* Indigo 600 */
+        }
+        .app-tab-button:first-child { border-top-left-radius: 0.5rem; } /* rounded-t-lg */
+        .app-tab-button:last-child { border-top-right-radius: 0.5rem; } /* rounded-t-lg */
+
+
+        /* PDF Specific Styles */
+        .pdf-file-item:hover { background-color: #f3f4f6; }
+        .page-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0.75rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+            margin-bottom: 0.75rem;
+            background-color: white;
+            box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06);
+            cursor: grab;
+            position: relative;
+            transition: transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+        }
+        .page-item:focus, .page-item:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.4); }
+        .page-item.dragging { opacity: 0.5; background-color: #e0e7ff; transform: scale(0.98); }
+        .page-item canvas { border: 1px solid #d1d5db; margin-bottom: 0.5rem; max-width: 100px; height: auto; }
+        .page-item-controls { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: 0.5rem; }
+        .page-item-controls .page-number { font-size: 0.875rem; color: #4b5563; font-weight: 500; }
+        .page-item-actions button { margin-left: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+        .pdf-page-thumbnail-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 1rem;
+            max-height: 450px;
+            overflow-y: auto;
+            border: 1px solid #d1d5db;
+            padding: 1rem;
+            border-radius: 0.375rem;
+            background-color: #f9fafb;
+            min-height: 150px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .pdf-action-button-group button { margin-bottom: 0.5rem; }
+        #pdfPreviewCanvasContainer canvas { display: block; margin: auto; }
+        #pdfPageContextMenu a { display: block; padding: 0.5rem 1rem; font-size: 0.875rem; color: #374151; text-decoration: none; white-space: nowrap; }
+        #pdfPageContextMenu a:hover, #pdfPageContextMenu a:focus { background-color: #f3f4f6; color: #111827; outline: none; }
+        .pdf-drop-zone-active { outline: 3px dashed #6366f1; outline-offset: -0.5rem; background-color: rgba(99, 102, 241, 0.05); transition: outline 0.2s ease-out, background-color 0.2s ease-out;}
+        .page-item.drop-target-before::before { content: ''; position: absolute; top: -4px; left: 5%; width: 90%; height: 3px; background-color: #6366f1; border-radius: 2px; z-index: 10; }
+        .page-item.drop-target-after::after { content: ''; position: absolute; bottom: -4px; left: 5%; width: 90%; height: 3px; background-color: #6366f1; border-radius: 2px; z-index: 10; }
+        .split-option-block {
+            padding: 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            background-color: white;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .split-option-block:hover { border-color: #6366f1; }
+        .split-option-block.selected-option { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+        .range-criterion-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border: 1px solid #e5e7eb; border-radius: 0.375rem; background-color: #f9fafb; margin-bottom: 0.5rem; }
+        .range-criterion-item input[type="text"], .range-criterion-item input[type="number"] { width: 6rem; font-size: 0.875rem; padding: 0.25rem 0.5rem; border-radius: 0.25rem; }
+        .range-criterion-item .remove-range-btn { padding: 0.25rem; }
+
+        /* Image Specific Styles */
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #555; }
+        .image-preview-item-dragging { opacity: 0.5; border: 2px dashed #6366f1; }
+        .image-preview-item-dragover { transform: scale(1.05); box-shadow: 0 0 10px rgba(99, 102, 241, 0.5); border: 1px solid #6366f1 !important; }
+        .image-preview-item {
+            position: relative;
+            padding: 4px;
+            border: 1px solid transparent;
+            border-radius: 0.375rem;
+            transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
+        }
+        .image-preview-item:hover { background-color: #e2e8f0; }
+        .image-preview-item .controls-container {
+            position: absolute;
+            bottom: 2px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 2px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 2px;
+            border-radius: 4px;
+            z-index: 10;
+        }
+        .image-preview-item:hover .controls-container { opacity: 1; pointer-events: auto; }
+        .image-preview-item .control-btn {
+            background-color: rgba(51, 65, 85, 0.8);
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            transition: background-color 0.2s;
+        }
+        .image-preview-item .control-btn:hover { background-color: #1e293b; }
+        .image-preview-item .remove-btn {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background-color: rgba(239, 68, 68, 0.8);
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 11;
+        }
+        .image-preview-item:hover .remove-btn { opacity: 1; pointer-events: auto; }
+        .image-preview-item .remove-btn:hover { background-color: #c0392b; }
+        .image-drop-zone {
+            border: 2px dashed #6366f1; /* Indigo 500 */
+            background-color: #eef2ff; /* Indigo 50 */
+            padding: 1.5rem 2.5rem; /* p-6 sm:p-10 */
+            text-align: center;
+            border-radius: 0.5rem; /* rounded-lg */
+            cursor: pointer;
+            transition: border-color 0.2s, background-color 0.2s;
+            margin-bottom: 1.5rem; /* mb-6 */
+        }
+        .image-drop-zone:hover {
+            border-color: #4f46e5; /* Indigo 600 */
+            background-color: #e0e7ff; /* Indigo 100 */
+        }
+
+        /* Modal styles (unified for both) */
+        .app-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            padding: 1rem;
+        }
+        .app-modal-content {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow: auto;
+            position: relative;
+        }
+        .app-modal-close-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background-color: #e2e8f0;
+            color: #475569;
+            border: none;
+            border-radius: 50%;
+            width: 2rem;
+            height: 2rem;
+            font-size: 1.25rem;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+        .app-modal-close-btn:hover { background-color: #cbd5e1; }
+        .app-modal-image { max-width: 100%; max-height: calc(90vh - 100px); display: block; margin: auto; }
+        #imageCropElement { display: block; max-width: 100%; max-height: 70vh; }
+
+        /* Confirmation Modal Specific Styles */
+        #confirmationModal .app-modal-content {
+            max-width: 400px;
+            text-align: center;
+        }
+        #confirmationModal .app-modal-content button {
+            margin: 0 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-6xl">
+        <header class="mb-6 sm:mb-8 text-center">
+            <h1 class="text-3xl sm:text-4xl font-bold text-indigo-700">SplitStitch</h1>
+        </header>
+
+        <div class="mb-6 border-b border-gray-200">
+            <nav class="-mb-px flex space-x-2 sm:space-x-4 justify-center" aria-label="Tabs">
+                <button id="tabPdfTools" class="app-tab-button whitespace-nowrap py-3 px-4 text-sm rounded-t-lg" title="Switch to PDF editing and merging tools">PDF Tools</button>
+                <button id="tabImageTools" class="app-tab-button whitespace-nowrap py-3 px-4 text-sm rounded-t-lg" title="Switch to Image stitching and editing tools">Image Tools</button>
+            </nav>
+        </div>
+
+        <main>
+            <!-- PDF Tools Section -->
+            <div id="pdfToolsSection" class="hidden">
+                <p class="text-gray-600 mt-2 mb-4 text-center">Manage and edit your PDF documents. All operations are performed securely in your browser without file uploads.</p>
+                <div class="mb-6 border-b border-gray-200">
+                    <nav class="-mb-px flex space-x-2 sm:space-x-4 justify-center" aria-label="PDF Sub-Tabs">
+                        <button id="pdfTabMerge" class="app-tab-button whitespace-nowrap py-2 px-3 text-xs sm:text-sm rounded-t-lg" title="Merge multiple PDF files">Merge PDFs</button>
+                        <button id="pdfTabEdit" class="app-tab-button whitespace-nowrap py-2 px-3 text-xs sm:text-sm rounded-t-lg" title="Edit pages of a PDF document">Edit PDF</button>
+                        <button id="pdfTabSplit" class="app-tab-button whitespace-nowrap py-2 px-3 text-xs sm:text-sm rounded-t-lg" title="Split a PDF into multiple files">Split PDF</button>
+                    </nav>
+                </div>
+
+                <div id="pdfMergeSection" class="p-4 sm:p-6 bg-white rounded-lg shadow-inner">
+                    <p class="text-gray-600 mt-2 mb-4">Merge multiple PDF files. Drag & drop files onto this section or use the button.</p>
+                    <div class="mb-6">
+                        <label for="pdfFilesInput" class="block text-sm font-medium text-gray-700 mb-2">1. Choose PDF files to merge (select multiple):</label>
+                        <input type="file" id="pdfFilesInput" title="Select PDF files from your computer" multiple accept=".pdf" class="custom-file-input block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    </div>
+                    <div id="pdfSelectedFilesListContainer" class="mb-6 hidden">
+                        <h2 class="text-lg font-semibold text-gray-800 mb-2">Selected Files for Merging:</h2>
+                        <p class="text-xs text-gray-500 mb-2">You can drag and drop to reorder the files.</p>
+                        <ul id="pdfSelectedFilesList" class="space-y-2 border border-gray-300 rounded-md p-3 bg-gray-50 max-h-60 overflow-y-auto"></ul>
+                    </div>
+                    <button id="pdfMergeButton" title="Combine selected PDF files into one document" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                        <span id="pdfMergeButtonText">Merge PDFs</span>
+                        <div id="pdfMergeLoader" class="app-loader ml-3 hidden"></div>
+                    </button>
+                    <a id="pdfDownloadMergedLink" title="Download the merged PDF file" class="hidden mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition duration-150 ease-in-out text-center block">Download Merged PDF</a>
+                </div>
+
+                <div id="pdfEditSection" class="hidden p-4 sm:p-6 bg-white rounded-lg shadow-inner">
+                    <p class="text-gray-600 mt-2 mb-4">Edit a single PDF document. Drag pages to reorder. Operations are performed in your browser.</p>
+                    <div class="mb-6">
+                        <label for="pdfToEditInput" class="block text-sm font-medium text-gray-700 mb-2">1. Choose a PDF file to edit:</label>
+                        <input type="file" id="pdfToEditInput" title="Select a single PDF file to edit" accept=".pdf" class="custom-file-input block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    </div>
+                     <div id="pdfEditProgressBarContainer" class="w-full bg-gray-200 rounded-full h-2.5 mb-4 hidden mt-2">
+                        <div id="pdfEditProgressBar" class="bg-indigo-600 h-2.5 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+                    </div>
+
+                    <div id="pdfEditControlsContainer" class="hidden mt-6">
+                        <div class="flex justify-between items-center mb-2">
+                            <h2 class="text-lg font-semibold text-gray-800">Document Pages:</h2>
+                            <div class="flex space-x-2">
+                                <button id="pdfUndoButton" title="Undo last action (Ctrl+Z)" class="text-gray-600 hover:text-indigo-600 p-1 rounded-md disabled:opacity-50" disabled>&#x21A9;</button>
+                                <button id="pdfRedoButton" title="Redo last undone action (Ctrl+Y)" class="text-gray-600 hover:text-indigo-600 p-1 rounded-md disabled:opacity-50" disabled>&#x21AA;</button>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-2">Drag & drop to reorder. Click page to preview. Right-click for more options. Select pages for batch operations. Use arrow keys to navigate pages, Space/Enter to select.</p>
+                        
+                        <div class="flex space-x-2 mb-4 pt-2">
+                            <button id="pdfSelectAllPagesButton" title="Select all pages in the document (Ctrl+A)" class="text-xs sm:text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1.5 px-3 rounded-md shadow-sm disabled:opacity-50" disabled>Select All</button>
+                            <button id="pdfDeselectAllPagesButton" title="Deselect all currently selected pages" class="text-xs sm:text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1.5 px-3 rounded-md shadow-sm disabled:opacity-50" disabled>Deselect All</button>
+                        </div>
+
+                        <div id="pdfPageThumbnailContainer" role="grid" aria-label="PDF Pages" class="pdf-page-thumbnail-container mb-4"></div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6 pdf-action-button-group">
+                            <button id="pdfRemoveSelectedPagesButton" title="Remove all currently selected pages (Delete/Backspace)" class="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md disabled:opacity-50">Remove Selected</button>
+                            <button id="pdfExtractSelectedPagesButton" title="Extract selected pages into a new PDF document" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md disabled:opacity-50">Extract Selected</button>
+                            <button id="pdfAddBlankPageButton" title="Add a new blank page to the document" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md disabled:opacity-50">Add Blank Page</button>
+                            <button id="pdfRotateLeftButton" class="w-full bg-teal-500 hover:bg-teal-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md disabled:opacity-50" title="Rotate Selected 90° Left">Rotate Left 90°</button>
+                            <button id="pdfRotateRightButton" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md disabled:opacity-50" title="Rotate Selected 90° Right">Rotate Right 90°</button>
+                            <button id="pdfRotate180Button" class="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md disabled:opacity-50" title="Rotate Selected 180°">Rotate 180°</button>
+                        </div>
+                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 border-t pt-4 mt-4">
+                            <div>
+                                 <label for="pdfInsertPageNumber" class="block text-xs font-medium text-gray-600 mb-1">Insert PDF pages before page # (1-based):</label>
+                                 <input type="number" id="pdfInsertPageNumber" min="1" class="w-full p-2 border border-gray-300 rounded-md text-sm mb-2" placeholder="e.g., 3 or blank for end">
+                            </div>
+                            <div>
+                                <label for="pdfToInsertInput" class="block text-xs font-medium text-gray-700 mb-1">PDF to insert pages from:</label>
+                                <input type="file" id="pdfToInsertInput" title="Select a PDF file whose pages you want to insert" accept=".pdf" class="custom-file-input block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                            </div>
+                        </div>
+                        <button id="pdfInsertPagesButton" title="Insert pages from the chosen PDF into the current document" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md disabled:opacity-50 disabled:cursor-not-allowed mb-6">Insert Pages from Selected PDF</button>
+                        <button id="pdfSaveEditedPdfButton" title="Save all changes and download the modified PDF" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                            <span id="pdfSaveEditedPdfButtonText">Save and Download Edited PDF</span>
+                            <div id="pdfEditLoader" class="app-loader ml-3 hidden"></div>
+                        </button>
+                    </div>
+                    <a id="pdfDownloadEditedLink" title="Download the edited PDF file" class="hidden mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md text-center block">Download Edited PDF</a>
+                    <a id="pdfDownloadExtractedLink" title="Download the PDF file containing the extracted pages" class="hidden mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md text-center block">Download Extracted PDF</a>
+                </div>
+
+                <div id="pdfSplitSection" class="hidden p-4 sm:p-6 bg-white rounded-lg shadow-inner">
+                    <p class="text-gray-600 mt-2 mb-4">Split a PDF document into multiple smaller PDFs. Operations are performed in your browser.</p>
+                    <div class="mb-6">
+                        <label for="pdfToSplitInput" class="block text-sm font-medium text-gray-700 mb-2">1. Choose a PDF file to split:</label>
+                        <input type="file" id="pdfToSplitInput" title="Select a PDF file to split into multiple parts" accept=".pdf" class="custom-file-input block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    </div>
+                     <div id="pdfSplitProgressBarContainer" class="w-full bg-gray-200 rounded-full h-2.5 mb-4 hidden mt-2">
+                        <div id="pdfSplitProgressBar" class="bg-indigo-600 h-2.5 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+                    </div>
+
+                    <div id="pdfSplitOptionsContainer" class="hidden mt-6">
+                        <h2 class="text-lg font-semibold text-gray-800 mb-4">2. Choose How to Split:</h2>
+                        <div class="space-y-4">
+
+                            <div class="split-option-block" data-split-option-value="eachPage">
+                                <label class="flex items-start sm:items-center w-full cursor-pointer">
+                                    <input type="radio" class="form-radio text-indigo-600 h-5 w-5 mt-0.5 sm:mt-0 focus:ring-indigo-500" name="pdfSplitType" value="eachPage" checked>
+                                    <div class="ml-3">
+                                        <span class="text-sm font-medium text-gray-800">Split every page into a separate PDF</span>
+                                        <p class="text-xs text-gray-500 mt-0.5">Creates one PDF file for every page.</p>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div class="split-option-block" data-split-option-value="everyX">
+                                <label class="flex items-start sm:items-center w-full cursor-pointer">
+                                    <input type="radio" class="form-radio text-indigo-600 h-5 w-5 mt-0.5 sm:mt-0 focus:ring-indigo-500" name="pdfSplitType" value="everyX">
+                                    <div class="ml-3">
+                                        <span class="text-sm font-medium text-gray-800">Split into files of a fixed page count</span>
+                                        <div class="mt-2 flex items-center space-x-2">
+                                            <span class="text-sm text-gray-600">Each new file will contain:</span>
+                                            <input type="number" id="pdfSplitEveryXPages" min="1" value="1" class="p-2 border border-gray-300 rounded-md text-sm w-20 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
+                                            <span class="text-sm text-gray-600">page(s)</span>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                            
+                            <div class="split-option-block" data-split-option-value="customRangesSeparate">
+                                <label class="flex items-start sm:items-center w-full cursor-pointer">
+                                    <input type="radio" class="form-radio text-indigo-600 h-5 w-5 mt-0.5 sm:mt-0 focus:ring-indigo-500" name="pdfSplitType" value="customRangesSeparate">
+                                    <div class="ml-3">
+                                        <span class="text-sm font-medium text-gray-800">Extract page ranges (each range to a new PDF)</span>
+                                         <p class="text-xs text-gray-500 mt-0.5 mb-2">Define one or more page ranges. Each defined range will be saved as a separate PDF file.</p>
+                                    </div>
+                                </label>
+                                <div id="pdfCustomRangesSeparateContainer" class="ml-0 sm:ml-8 mt-1 space-y-2 hidden">
+                                    </div>
+                                <button type="button" id="pdfAddCustomRangeSeparateButton" class="ml-0 sm:ml-8 mt-2 text-sm text-indigo-600 hover:text-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" /></svg>
+                                    Add Page Range
+                                </button>
+                            </div>
+
+                            <div class="split-option-block" data-split-option-value="bookmarks">
+                                <label class="flex items-start sm:items-center w-full cursor-pointer">
+                                    <input type="radio" class="form-radio text-indigo-600 h-5 w-5 mt-0.5 sm:mt-0 focus:ring-indigo-500" name="pdfSplitType" value="bookmarks">
+                                     <div class="ml-3">
+                                        <span class="text-sm font-medium text-gray-800">Split by top-level bookmarks</span>
+                                        <p class="text-xs text-gray-500 mt-0.5">Creates a new PDF starting at each top-level bookmark.</p>
+                                        <div id="pdfBookmarkInfo" class="text-xs text-indigo-700 mt-1 hidden p-2 bg-indigo-50 rounded-md"></div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <button id="pdfExecuteSplitButton" title="Perform the split operation based on selected options" class="mt-8 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span id="pdfExecuteSplitButtonText">Split PDF</span>
+                            <div id="pdfSplitLoader" class="app-loader ml-3 hidden"></div>
+                        </button>
+                        <div id="pdfSplitResultsContainer" class="mt-4"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Image Tools Section -->
+            <div id="imageToolsSection" class="hidden">
+                <p class="text-gray-600 mt-2 mb-4 text-center">Stitch and edit your images. All operations are performed securely in your browser without file uploads.</p>
+                <div id="imageDropZone" class="image-drop-zone">
+                    <p class="text-slate-600">Drag & drop JPG, JPEG, or PNG images here, or <span class="text-indigo-600 font-semibold">click to select files</span></p>
+                    <p class="text-xs text-slate-500 mt-1">Max 20 files, 10MB each. Drag to reorder. Use controls to rotate, crop, or adjust.</p>
+                </div>
+
+                <input type="file" id="imageFilesInput" accept=".jpg,.jpeg,.png" multiple class="hidden">
+
+                <div id="imagePreviewContainerOuter" class="mb-6">
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Image Previews (Drag to reorder, hover for controls):</label>
+                    <div id="imagePreviewContainer" class="bg-slate-50 p-3 rounded-md min-h-[110px] flex flex-wrap gap-3 items-center justify-start custom-scrollbar overflow-x-auto">
+                        <p id="imagePreviewPlaceholder" class="text-slate-500 text-sm w-full text-center">No images selected yet.</p>
+                    </div>
+                </div>
+                
+                <!-- Live Stitched Preview -->
+                <div id="imageLivePreviewContainer" class="hidden mb-6">
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Live Stitched Preview (Low Resolution):</label>
+                    <canvas id="imageLivePreviewCanvas" class="border-2 border-dashed border-slate-300 p-1 rounded-lg bg-slate-50 max-h-[200px] w-full object-contain"></canvas>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                    <div>
+                        <label for="imageOutputFilename" class="block text-sm font-medium text-slate-700 mb-1">Output Filename (Optional):</label>
+                        <input type="text" id="imageOutputFilename" placeholder="stitched_image" class="w-full p-3 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                    </div>
+                    <div>
+                        <label for="imageStitchDirection" class="block text-sm font-medium text-slate-700 mb-1">Stitch Direction:</label>
+                        <select id="imageStitchDirection" class="w-full p-3 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                            <option value="vertical" selected>Vertical</option>
+                            <option value="horizontal">Horizontal</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="imageSpacing" class="block text-sm font-medium text-slate-700 mb-1">Image Spacing (px):</label>
+                        <input type="number" id="imageSpacing" value="0" min="0" max="100" class="w-full p-3 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                    </div>
+                    <div>
+                        <label for="imageAlignment" class="block text-sm font-medium text-slate-700 mb-1">Image Alignment:</label>
+                        <select id="imageAlignment" class="w-full p-3 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                            <option value="left_top">Left / Top</option>
+                            <option value="center" selected>Center</option>
+                            <option value="right_bottom">Right / Bottom</option>
+                        </select>
+                    </div>
+                    <div id="imageQualityControlContainer">
+                        <label for="imageQuality" class="block text-sm font-medium text-slate-700 mb-1">JPG Quality (<span id="imageQualityValue" class="font-semibold text-indigo-600">0.95</span>):</label>
+                        <input type="range" id="imageQuality" min="0.1" max="1.0" step="0.05" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                        <div id="imageQualityPreviewContainer" class="hidden mt-2">
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Quality Preview:</label>
+                            <canvas id="imageQualityPreview" class="w-[100px] h-[100px] border border-slate-300 rounded-md"></canvas>
+                        </div>
+                    </div>
+                     <div>
+                        <label for="imageOutputFormat" class="block text-sm font-medium text-slate-700 mb-1">Output Format:</label>
+                        <select id="imageOutputFormat" class="w-full p-3 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                            <option value="image/jpeg" selected>JPG</option>
+                            <option value="image/png">PNG</option>
+                        </select>
+                    </div>
+                    <div id="imageBackgroundColorContainer" class="hidden">
+                        <label for="imageBackgroundColor" class="block text-sm font-medium text-slate-700 mb-1">Background Color (for PNG):</label>
+                        <input type="color" id="imageBackgroundColor" value="#FFFFFF" class="w-full p-1.5 border border-slate-300 rounded-md shadow-sm h-[46px]">
+                    </div>
+                    <div>
+                        <label for="imagePdfPageSize" class="block text-sm font-medium text-slate-700 mb-1">PDF Page Size:</label>
+                        <select id="imagePdfPageSize" class="w-full p-3 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                            <option value="a4" selected>A4</option>
+                            <option value="a3">A3</option>
+                            <option value="letter">Letter</option>
+                        </select>
+                    </div>
+                    <!-- Watermark Controls -->
+                    <div class="lg:col-span-2">
+                        <label for="imageWatermarkText" class="block text-sm font-medium text-slate-700 mb-1">Watermark Text (Optional):</label>
+                        <input type="text" id="imageWatermarkText" placeholder="Enter watermark text" class="w-full p-3 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                    </div>
+                    <div>
+                        <label for="imageWatermarkPosition" class="block text-sm font-medium text-slate-700 mb-1">Watermark Position:</label>
+                        <select id="imageWatermarkPosition" class="w-full p-3 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                            <option value="bottom-right" selected>Bottom Right</option>
+                            <option value="bottom-left">Bottom Left</option>
+                            <option value="top-right">Top Right</option>
+                            <option value="top-left">Top Left</option>
+                            <option value="center">Center</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="button-group flex flex-col sm:flex-row gap-2 mb-6">
+                    <button id="imageStitchButton" disabled class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition-colors disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                        Stitch Images
+                    </button>
+                    <button id="imageClearImagesButton" type="button" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2">
+                        Clear Images
+                    </button>
+                    <button id="imageUndoButton" type="button" disabled class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">Undo</button>
+                    <button id="imageRedoButton" type="button" disabled class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">Redo</button>
+                    <button id="imageResetButton" type="button" class="flex-1 bg-rose-500 hover:bg-rose-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2">
+                        Reset All
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-center mb-6 min-h-[40px]">
+                    <div id="imageSpinner" class="app-loader hidden mr-3"></div>
+                    <div id="imageStatus" role="status" aria-live="polite" class="text-sm text-gray-600 text-center p-2 bg-gray-100 rounded-md w-full">Select images and click "Stitch Images".</div>
+                </div>
+                
+                <div id="imageStitchedImageContainerOuter" class="hidden mb-6">
+                    <div class="flex justify-between items-center mb-2">
+                         <label class="block text-sm font-medium text-gray-700">Stitched Result:</label>
+                         <button id="imageViewLargerButton" class="hidden text-sm text-indigo-600 hover:text-indigo-800 font-semibold py-1 px-2 rounded-md hover:bg-indigo-100 transition-colors" aria-label="View larger stitched image">
+                            View Larger
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 inline-block ml-1">
+                                <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9zm5.5-1.5a.75.75 0 01.75.75v2.5h2.5a.75.75 0 010 1.5h-2.5v2.5a.75.75 0 01-1.5 0v-2.5h-2.5a.75.75 0 010-1.5h2.5v-2.5a.75.75 0 01.75-.75z" clip-rule="evenodd" />
+                            </svg>
+                         </button>
+                    </div>
+                    <div id="imageStitchedImageContainer" class="border-2 border-dashed border-gray-300 p-4 rounded-lg bg-gray-50 min-h-[200px] flex justify-center items-center max-h-[70vh] overflow-auto custom-scrollbar">
+                        <img id="imageStitchedImage" alt="Stitched result" class="max-w-full h-auto block shadow-md rounded">
+                    </div>
+                </div>
+
+                <div id="imageDownloadLinkContainer" class="hidden flex flex-col sm:flex-row gap-4 justify-center">
+                    <a id="imageDownloadImageLink" href="#" class="block w-full sm:w-auto text-center bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2" role="button">Download Image</a>
+                    <a id="imageDownloadPdfLink" href="#" class="block w-full sm:w-auto text-center bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2" role="button">Download as PDF</a>
+                </div>
+            </div>
+
+            <div id="appMessageArea" class="mt-4 text-sm text-center"></div>
+        </main>
+
+        <footer class="mt-6 sm:mt-8 pt-6 border-t border-gray-200">
+             <h3 class="text-lg font-semibold text-gray-700 mb-2">Privacy & Security</h3>
+            <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                <li><strong>Client-Side Processing:</strong> All operations happen directly in your web browser.</li>
+                <li><strong>No Uploads:</strong> Your files are NEVER uploaded to any external server.</li>
+                <li><strong>Secure by Design:</strong> Your data remains private as files don't leave your device.</li>
+                <li><strong>Open Source Libraries:</strong> Uses <a href="https://pdf-lib.js.org/" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline">pdf-lib</a>, <a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline">PDF.js</a>, <a href="https://parall.ax/products/jspdf" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline">jsPDF</a>, and <a href="https://fengyuanchen.github.io/cropperjs/" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline">Cropper.js</a>.</li>
+            </ul>
+        </footer>
+    </div>
+    
+    <!-- PDF Page Preview Modal -->
+    <div id="pdfPagePreviewModal" role="dialog" aria-modal="true" aria-labelledby="pdfPagePreviewModalTitle" class="app-modal-overlay hidden">
+        <div class="app-modal-content max-w-3xl w-full max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center mb-3 sm:mb-4">
+                <h3 id="pdfPagePreviewModalTitle" class="text-xl font-semibold text-gray-800">Page Preview</h3>
+                <div class="flex items-center space-x-2">
+                    <button id="pdfZoomOutButton" title="Zoom Out (-)" class="p-2 text-gray-600 hover:text-indigo-600 rounded-md">&#x2796;</button>
+                    <span id="pdfZoomLevelIndicator" class="text-sm text-gray-700 w-12 text-center">100%</span>
+                    <button id="pdfZoomInButton" title="Zoom In (+)" class="p-2 text-gray-600 hover:text-indigo-600 rounded-md">&#x2795;</button>
+                    <button id="pdfClosePreviewModalButton" title="Close (Esc)" class="p-2 text-gray-600 hover:text-red-600 rounded-md text-2xl leading-none">&times;</button>
+                </div>
+            </div>
+            <div id="pdfPreviewCanvasContainer" class="flex-grow overflow-auto border border-gray-300 bg-gray-50 rounded flex items-center justify-center">
+                <canvas id="pdfPagePreviewCanvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF Page Context Menu -->
+    <div id="pdfPageContextMenu" role="menu" aria-orientation="vertical" class="hidden fixed bg-white border border-gray-300 rounded-md shadow-lg py-1 z-[60]">
+    </div>
+
+    <!-- Image Detailed Preview Modal -->
+    <div id="imageDetailedPreviewModal" class="app-modal-overlay hidden">
+        <div class="app-modal-content custom-scrollbar">
+            <button id="imageModalCloseButton" class="app-modal-close-btn" aria-label="Close detailed preview">&times;</button>
+            <img id="imageModalImage" src="#" alt="Detailed stitched image preview" class="app-modal-image">
+        </div>
+    </div>
+
+    <!-- Image Crop Modal -->
+    <div id="imageCropModal" class="app-modal-overlay hidden">
+        <div class="app-modal-content">
+            <img id="imageCropElement" src="" alt="Image to crop" class="max-w-full h-auto block">
+            <div class="mt-4 flex justify-end gap-3">
+                <button id="imageCropConfirm" class="bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-md shadow-sm">Apply Crop</button>
+                <button id="imageCropCancel" class="bg-rose-500 hover:bg-rose-600 text-white py-2 px-4 rounded-md shadow-sm">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div id="confirmationModal" class="app-modal-overlay hidden">
+        <div class="app-modal-content">
+            <p id="confirmationMessage" class="text-lg text-gray-800 mb-4"></p>
+            <div class="flex justify-center">
+                <button id="confirmYes" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md">Yes</button>
+                <button id="confirmNo" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg shadow-md">No</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Global Utility Functions and Elements ---
+            const appMessageArea = document.getElementById('appMessageArea');
+            const confirmationModal = document.getElementById('confirmationModal');
+            const confirmationMessage = document.getElementById('confirmationMessage');
+            const confirmYesButton = document.getElementById('confirmYes');
+            const confirmNoButton = document.getElementById('confirmNo');
+            let confirmResolve = null;
+
+            function showAppMessage(message, type = 'info', append = false) {
+                if (append && appMessageArea.textContent && !appMessageArea.textContent.endsWith('\n')) { appMessageArea.textContent += `\n${message}`; }
+                else if (append) { appMessageArea.textContent += message; }
+                else { appMessageArea.textContent = message; }
+                appMessageArea.className = 'mt-4 text-sm text-center';
+                switch (type) {
+                    case 'red': appMessageArea.classList.add('text-red-600'); break;
+                    case 'green': appMessageArea.classList.add('text-green-600'); break;
+                    case 'orange': appMessageArea.classList.add('text-orange-500'); break;
+                    case 'blue': appMessageArea.classList.add('text-blue-600'); break;
+                    default: appMessageArea.classList.add('text-gray-700');
+                }
+            }
+
+            // Custom Confirmation Dialog
+            function showConfirmation(message) {
+                return new Promise(resolve => {
+                    confirmationMessage.textContent = message;
+                    confirmationModal.classList.remove('hidden');
+                    confirmResolve = resolve;
+                });
+            }
+
+            confirmYesButton.addEventListener('click', () => {
+                confirmationModal.classList.add('hidden');
+                if (confirmResolve) confirmResolve(true);
+            });
+
+            confirmNoButton.addEventListener('click', () => {
+                confirmationModal.classList.add('hidden');
+                if (confirmResolve) confirmResolve(false);
+            });
+
+            confirmationModal.addEventListener('click', (e) => {
+                if (e.target === confirmationModal) { // Clicked outside content
+                    confirmationModal.classList.add('hidden');
+                    if (confirmResolve) confirmResolve(false); // Treat outside click as 'No'
+                }
+            });
+
+
+            function updateProgressBar(barElement, containerElement, percentage) {
+                if (percentage > 0 && containerElement.classList.contains('hidden')) containerElement.classList.remove('hidden');
+                barElement.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
+                if (percentage >= 100 || percentage <=0) { setTimeout(() => { if (barElement.style.width === '100%' || barElement.style.width === '0%') { containerElement.classList.add('hidden'); barElement.style.width = '0%';}}, 1500); }
+            }
+            function resetProgressBar(barElement, containerElement) { barElement.style.width = '0%'; containerElement.classList.add('hidden'); }
+            function preventDefaultsGlobal(e) { e.preventDefault(); e.stopPropagation(); }
+
+            // --- Main Tab Switching ---
+            const tabPdfTools = document.getElementById('tabPdfTools');
+            const tabImageTools = document.getElementById('tabImageTools');
+            const pdfToolsSection = document.getElementById('pdfToolsSection');
+            const imageToolsSection = document.getElementById('imageToolsSection');
+            let currentMainTab = tabPdfTools;
+
+            function switchMainTab(activeTab, activeSection) {
+                [tabPdfTools, tabImageTools].forEach(tab => tab.classList.remove('active'));
+                [pdfToolsSection, imageToolsSection].forEach(section => section.classList.add('hidden'));
+                activeTab.classList.add('active');
+                activeSection.classList.remove('hidden');
+                currentMainTab = activeTab;
+                showAppMessage(''); // Clear general message area on tab switch
+            }
+
+            tabPdfTools.addEventListener('click', () => switchMainTab(tabPdfTools, pdfToolsSection));
+            tabImageTools.addEventListener('click', () => switchMainTab(tabImageTools, imageToolsSection));
+
+            // --- PDF Tools Logic (from PDFMerge 5.25.html) ---
+            const { PDFDocument, rgb, StandardFonts, PageSizes, degrees } = PDFLib;
+
+            // PDF Sub-Tabs
+            const pdfTabMerge = document.getElementById('pdfTabMerge');
+            const pdfTabEdit = document.getElementById('pdfTabEdit');
+            const pdfTabSplit = document.getElementById('pdfTabSplit');
+            const pdfMergeSection = document.getElementById('pdfMergeSection');
+            const pdfEditSection = document.getElementById('pdfEditSection');
+            const pdfSplitSection = document.getElementById('pdfSplitSection');
+            let currentPdfSubTab = pdfTabMerge;
+
+            // Merge Section Elements
+            const pdfFilesInput = document.getElementById('pdfFilesInput');
+            const pdfSelectedFilesListContainer = document.getElementById('pdfSelectedFilesListContainer');
+            const pdfSelectedFilesList = document.getElementById('pdfSelectedFilesList');
+            const pdfMergeButton = document.getElementById('pdfMergeButton');
+            const pdfMergeButtonText = document.getElementById('pdfMergeButtonText');
+            const pdfMergeLoader = document.getElementById('pdfMergeLoader');
+            const pdfDownloadMergedLink = document.getElementById('pdfDownloadMergedLink');
+
+            // Edit Section Elements
+            const pdfToEditInput = document.getElementById('pdfToEditInput');
+            const pdfEditProgressBarContainer = document.getElementById('pdfEditProgressBarContainer');
+            const pdfEditProgressBar = document.getElementById('pdfEditProgressBar');
+            const pdfEditControlsContainer = document.getElementById('pdfEditControlsContainer');
+            const pdfSelectAllPagesButton = document.getElementById('pdfSelectAllPagesButton');
+            const pdfDeselectAllPagesButton = document.getElementById('pdfDeselectAllPagesButton');
+            const pdfPageThumbnailContainer = document.getElementById('pdfPageThumbnailContainer');
+            const pdfRemoveSelectedPagesButton = document.getElementById('pdfRemoveSelectedPagesButton');
+            const pdfExtractSelectedPagesButton = document.getElementById('pdfExtractSelectedPagesButton');
+            const pdfAddBlankPageButton = document.getElementById('pdfAddBlankPageButton');
+            const pdfRotateLeftButton = document.getElementById('pdfRotateLeftButton');
+            const pdfRotateRightButton = document.getElementById('pdfRotateRightButton');
+            const pdfRotate180Button = document.getElementById('pdfRotate180Button');
+            const pdfInsertPageNumberInput = document.getElementById('pdfInsertPageNumber');
+            const pdfToInsertInput = document.getElementById('pdfToInsertInput');
+            const pdfInsertPagesButton = document.getElementById('pdfInsertPagesButton');
+            const pdfSaveEditedPdfButton = document.getElementById('pdfSaveEditedPdfButton');
+            const pdfSaveEditedPdfButtonText = document.getElementById('pdfSaveEditedPdfButtonText');
+            const pdfEditLoader = document.getElementById('pdfEditLoader');
+            const pdfDownloadEditedLink = document.getElementById('pdfDownloadEditedLink');
+            const pdfDownloadExtractedLink = document.getElementById('pdfDownloadExtractedLink');
+            const pdfUndoButton = document.getElementById('pdfUndoButton');
+            const pdfRedoButton = document.getElementById('pdfRedoButton');
+            const pdfPagePreviewModal = document.getElementById('pdfPagePreviewModal');
+            const pdfPagePreviewModalTitle = document.getElementById('pdfPagePreviewModalTitle');
+            const pdfPagePreviewCanvas = document.getElementById('pdfPagePreviewCanvas');
+            const pdfClosePreviewModalButton = document.getElementById('pdfClosePreviewModalButton');
+            const pdfZoomInButton = document.getElementById('pdfZoomInButton');
+            const pdfZoomOutButton = document.getElementById('pdfZoomOutButton');
+            const pdfZoomLevelIndicator = document.getElementById('pdfZoomLevelIndicator');
+            const pdfPageContextMenu = document.getElementById('pdfPageContextMenu');
+
+            // Split Section Elements
+            const pdfToSplitInput = document.getElementById('pdfToSplitInput');
+            const pdfSplitProgressBarContainer = document.getElementById('pdfSplitProgressBarContainer');
+            const pdfSplitProgressBar = document.getElementById('pdfSplitProgressBar');
+            const pdfSplitOptionsContainer = document.getElementById('pdfSplitOptionsContainer');
+            const pdfExecuteSplitButton = document.getElementById('pdfExecuteSplitButton');
+            const pdfExecuteSplitButtonText = document.getElementById('pdfExecuteSplitButtonText');
+            const pdfSplitLoader = document.getElementById('pdfSplitLoader');
+            const pdfSplitResultsContainer = document.getElementById('pdfSplitResultsContainer');
+            const pdfSplitTypeRadios = document.querySelectorAll('input[name="pdfSplitType"]');
+            const pdfSplitEveryXPagesInput = document.getElementById('pdfSplitEveryXPages');
+            const pdfCustomRangesSeparateContainer = document.getElementById('pdfCustomRangesSeparateContainer');
+            const pdfAddCustomRangeSeparateButton = document.getElementById('pdfAddCustomRangeSeparateButton');
+            const pdfBookmarkInfoDiv = document.getElementById('pdfBookmarkInfo');
+            const allPdfSplitOptionBlocks = document.querySelectorAll('.split-option-block');
+
+            // PDF State Variables
+            let pdfFilesArray = [];
+            let pdfDraggedMergeItem = null;
+            let currentPdfEditDoc = null;
+            let currentPdfEditFile = null;
+            let currentPdfEditJsDoc = null;
+            let pdfDraggedEditPage = null;
+            let pdfUndoStack = [];
+            let pdfRedoStack = [];
+            const PDF_MAX_UNDO_STATES = 10;
+            let pdfLastSelectedCheckboxIndex = -1;
+            let pdfCurrentPreviewPageNum = null;
+            let pdfCurrentPreviewZoomScale = 1.0;
+            const PDF_ZOOM_STEP = 0.25;
+            const PDF_MIN_ZOOM = 0.25;
+            const PDF_MAX_ZOOM = 3.0;
+            let pdfCurrentContextMenuPageIndex = null;
+            let currentPdfSplitDoc = null;
+            let currentPdfSplitJsDoc = null;
+            let totalPagesInLoadedPdfForSplit = 0;
+            let pdfElementThatOpenedModal = null;
+
+            // PDF Tab Switching Function
+            function switchPdfSubTab(activeTab, activeSection) {
+                [pdfTabMerge, pdfTabEdit, pdfTabSplit].forEach(tab => tab.classList.remove('active'));
+                [pdfMergeSection, pdfEditSection, pdfSplitSection].forEach(section => section.classList.add('hidden'));
+                activeTab.classList.add('active');
+                activeSection.classList.remove('hidden');
+                currentPdfSubTab = activeTab;
+                showAppMessage('');
+            }
+
+            // PDF Utility Functions
+            function getPdfDragAfterElement(container, y, currentDraggedItem) {
+                const draggableElements = [...container.querySelectorAll('li:not(.opacity-50), .page-item:not(.dragging)')].filter(child => child !== currentDraggedItem);
+                 return draggableElements.reduce((closest, child) => { const box = child.getBoundingClientRect(); const offset = y - box.top - box.height / 2; if (offset < 0 && offset > closest.offset) return { offset: offset, element: child }; else return closest; }, { offset: Number.NEGATIVE_INFINITY }).element;
+            }
+
+            // PDF Merge Section Functions
+            function handlePdfFilesForMerge(event) {
+                const newFiles = Array.from(event.target.files);
+                const pdfsToAdd = newFiles.filter(file => file.type === 'application/pdf' && !pdfFilesArray.some(existingFile => existingFile.name === file.name && existingFile.size === file.size && existingFile.lastModified === file.lastModified));
+                pdfFilesArray = [...pdfFilesArray, ...pdfsToAdd];
+                const nonPdfFiles = newFiles.filter(file => file.type !== 'application/pdf');
+                if (nonPdfFiles.length > 0) showAppMessage(`Warning: Skipped non-PDF files: ${nonPdfFiles.map(f => f.name).join(', ')}`, 'orange');
+                const duplicateFiles = newFiles.filter(file => file.type === 'application/pdf' && !pdfsToAdd.includes(file));
+                if (duplicateFiles.length > 0) showAppMessage(`Info: Skipped already selected PDF files: ${duplicateFiles.map(f => f.name).join(', ')}`, 'blue', true);
+                renderPdfSelectedFilesForMerge(); updatePdfMergeButtonState(); pdfDownloadMergedLink.classList.add('hidden');
+            }
+            function renderPdfSelectedFilesForMerge() {
+                pdfSelectedFilesList.innerHTML = '';
+                if (pdfFilesArray.length > 0) pdfSelectedFilesListContainer.classList.remove('hidden'); else { pdfSelectedFilesListContainer.classList.add('hidden'); return; }
+                pdfFilesArray.forEach((file, index) => {
+                    const listItem = document.createElement('li'); listItem.className = 'pdf-file-item p-2 border border-gray-200 rounded-md flex justify-between items-center cursor-grab bg-white'; listItem.draggable = true; listItem.dataset.originalIndex = index;
+                    const fileNameSpan = document.createElement('span'); fileNameSpan.textContent = `${index + 1}. ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`; fileNameSpan.className = 'text-sm text-gray-700 truncate mr-2';
+                    const removeBtn = document.createElement('button'); removeBtn.innerHTML = '&times;'; removeBtn.className = 'text-red-500 hover:text-red-700 font-bold text-lg ml-auto px-2'; removeBtn.title = `Remove ${file.name}`;
+                    removeBtn.onclick = (e) => { e.stopPropagation(); removePdfFileFromMergeList(index); };
+                    listItem.appendChild(fileNameSpan); listItem.appendChild(removeBtn); pdfSelectedFilesList.appendChild(listItem);
+                    listItem.addEventListener('dragstart', () => { pdfDraggedMergeItem = listItem; setTimeout(() => listItem.classList.add('opacity-50'), 0); });
+                    listItem.addEventListener('dragend', () => { setTimeout(() => { if (pdfDraggedMergeItem) pdfDraggedMergeItem.classList.remove('opacity-50'); pdfDraggedMergeItem = null; }, 0); updatePdfMergeFileOrderFromDOM(); });
+                    listItem.addEventListener('dragover', (e) => { e.preventDefault(); const afterElement = getPdfDragAfterElement(pdfSelectedFilesList, e.clientY, pdfDraggedMergeItem); if (pdfDraggedMergeItem && pdfDraggedMergeItem !== listItem) { if (afterElement == null) pdfSelectedFilesList.appendChild(pdfDraggedMergeItem); else pdfSelectedFilesList.insertBefore(pdfDraggedMergeItem, afterElement);}});
+                });
+            }
+            function updatePdfMergeFileOrderFromDOM() {
+                const newOrderedFiles = [];
+                pdfSelectedFilesList.querySelectorAll('li').forEach(li => { const textContent = li.querySelector('span').textContent; const nameMatch = textContent.match(/^\d+\.\s*(.*?)\s*\(\s*\d+(\.\d+)?\s*MB\s*\)$/); if (nameMatch && nameMatch[1]) { const file = pdfFilesArray.find(f => f.name === nameMatch[1]); if (file) newOrderedFiles.push(file); }});
+                if (newOrderedFiles.length === pdfFilesArray.length) pdfFilesArray = newOrderedFiles;
+                renderPdfSelectedFilesForMerge();
+            }
+            function removePdfFileFromMergeList(indexToRemove) { pdfFilesArray.splice(indexToRemove, 1); renderPdfSelectedFilesForMerge(); updatePdfMergeButtonState(); if (pdfFilesArray.length === 0) { pdfSelectedFilesListContainer.classList.add('hidden'); showAppMessage('No files selected for merging.', 'info');} }
+            function updatePdfMergeButtonState() { pdfMergeButton.disabled = pdfFilesArray.length < 2; }
+            async function mergePdfFiles() {
+                if (pdfFilesArray.length < 2) { showAppMessage('Please select at least two PDF files to merge.', 'red'); return; }
+                pdfMergeButtonText.textContent = 'Merging...'; pdfMergeLoader.classList.remove('hidden'); pdfMergeButton.disabled = true; pdfDownloadMergedLink.classList.add('hidden'); showAppMessage('');
+                try {
+                    const mergedPdf = await PDFDocument.create();
+                    for (const file of pdfFilesArray) { const arrayBuffer = await file.arrayBuffer(); const pdfToMerge = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true, updateMetadata: false }); const pages = await mergedPdf.copyPages(pdfToMerge, pdfToMerge.getPageIndices()); pages.forEach(page => mergedPdf.addPage(page)); }
+                    const mergedPdfBytes = await mergedPdf.save(); const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' }); const url = URL.createObjectURL(blob);
+                    pdfDownloadMergedLink.href = url; pdfDownloadMergedLink.download = `merged-document-${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`; pdfDownloadMergedLink.classList.remove('hidden');
+                    showAppMessage('PDFs merged successfully! Click link to download.', 'green');
+                } catch (error) { console.error('Error merging PDFs:', error); showAppMessage(`Error merging PDFs: ${error.message}. Ensure files are valid.`, 'red'); }
+                finally { pdfMergeButtonText.textContent = 'Merge PDFs'; pdfMergeLoader.classList.add('hidden'); updatePdfMergeButtonState(); }
+            }
+
+            // PDF Edit Section Functions
+            async function pushPdfUndoState() { if (!currentPdfEditDoc) return; try { const currentState = await currentPdfEditDoc.save(); pdfUndoStack.push(currentState); if (pdfUndoStack.length > PDF_MAX_UNDO_STATES) pdfUndoStack.shift(); pdfRedoStack = []; updatePdfUndoRedoButtons(); } catch (error) { console.error("Error pushing undo state:", error); }}
+            async function loadPdfStateFromBuffer(buffer) { try { currentPdfEditDoc = await PDFDocument.load(buffer.slice(0), { ignoreEncryption: true, updateMetadata: false }); currentPdfEditJsDoc = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise; await renderPdfPagesForEditing(); updatePdfUndoRedoButtons(); } catch (error) { console.error("Error loading state from buffer:", error); showAppMessage("Error during undo/redo.", "red");}}
+            async function undoPdfEditOperation() { if (pdfUndoStack.length === 0) return; showAppMessage('Undoing ...', 'info'); setPdfEditButtonsDisabled(true); pdfEditLoader.classList.remove('hidden'); try { const currentStateForRedo = await currentPdfEditDoc.save(); pdfRedoStack.push(currentStateForRedo); const prevStateBuffer = pdfUndoStack.pop(); await loadPdfStateFromBuffer(prevStateBuffer); showAppMessage('Undone.', 'green'); } catch (e) { console.error("Undo error:", e); showAppMessage("Undo failed.", "red");} finally { setPdfEditButtonsDisabled(false); pdfEditLoader.classList.add('hidden'); updatePdfUndoRedoButtons(); }}
+            async function redoPdfEditOperation() { if (pdfRedoStack.length === 0) return; showAppMessage('Redoing ...', 'info'); setPdfEditButtonsDisabled(true); pdfEditLoader.classList.remove('hidden'); try { const currentStateForUndo = await currentPdfEditDoc.save(); pdfUndoStack.push(currentStateForUndo); const nextStateBuffer = pdfRedoStack.pop(); await loadPdfStateFromBuffer(nextStateBuffer); showAppMessage('Redone.', 'green'); } catch (e) { console.error("Redo error:", e); showAppMessage("Redo failed.", "red");} finally { setPdfEditButtonsDisabled(false); pdfEditLoader.classList.add('hidden'); updatePdfUndoRedoButtons(); }}
+            function updatePdfUndoRedoButtons() { pdfUndoButton.disabled = pdfUndoStack.length === 0; pdfRedoButton.disabled = pdfRedoStack.length === 0; }
+            async function handlePdfToEdit(event) {
+                const file = event.target.files[0]; if (!file || file.type !== 'application/pdf') { showAppMessage('Select PDF.', 'red'); resetPdfEditUI(); return; }
+                currentPdfEditFile = file; showAppMessage('Loading PDF...', 'info'); pdfEditLoader.classList.remove('hidden'); setPdfEditButtonsDisabled(true);
+                pdfUndoStack = []; pdfRedoStack = []; updatePdfUndoRedoButtons(); pdfLastSelectedCheckboxIndex = -1; resetProgressBar(pdfEditProgressBar, pdfEditProgressBarContainer);
+                try {
+                    const arrayBufferFromFile = await file.arrayBuffer(); currentPdfEditJsDoc = await pdfjsLib.getDocument({ data: arrayBufferFromFile.slice(0) }).promise; currentPdfEditDoc = await PDFDocument.load(arrayBufferFromFile, { ignoreEncryption: true, updateMetadata: false });
+                    await pushPdfUndoState(); await renderPdfPagesForEditing(); pdfEditControlsContainer.classList.remove('hidden');
+                    showAppMessage(`Loaded '${file.name}' (${currentPdfEditDoc.getPageCount()} pages).`, 'green'); setPdfEditButtonsDisabled(false);
+                    pdfDownloadEditedLink.classList.add('hidden'); pdfDownloadExtractedLink.classList.add('hidden');
+                } catch (e) { console.error('Load PDF error:', e); showAppMessage(`Error loading PDF: ${e.message}`, 'red'); resetPdfEditUI(); } finally { pdfEditLoader.classList.add('hidden'); }
+            }
+            function resetPdfEditUI() {
+                pdfEditControlsContainer.classList.add('hidden'); currentPdfEditDoc = null; currentPdfEditFile = null; currentPdfEditJsDoc = null;
+                pdfPageThumbnailContainer.innerHTML = ''; setPdfEditButtonsDisabled(true); pdfToEditInput.value = '';
+                pdfUndoStack = []; pdfRedoStack = []; updatePdfUndoRedoButtons(); resetProgressBar(pdfEditProgressBar, pdfEditProgressBarContainer); pdfLastSelectedCheckboxIndex = -1;
+            }
+            function setPdfEditButtonsDisabled(disabled) { [pdfSaveEditedPdfButton, pdfRemoveSelectedPagesButton, pdfExtractSelectedPagesButton, pdfAddBlankPageButton, pdfInsertPagesButton, pdfRotateLeftButton, pdfRotateRightButton, pdfRotate180Button, pdfSelectAllPagesButton, pdfDeselectAllPagesButton].forEach(btn => { if(btn) btn.disabled = disabled; }); updatePdfUndoRedoButtons(); }
+            async function renderPdfPagesForEditing() {
+                pdfPageThumbnailContainer.innerHTML = '';
+                if (!currentPdfEditDoc || !currentPdfEditJsDoc) { resetProgressBar(pdfEditProgressBar, pdfEditProgressBarContainer); return; }
+                pdfPageThumbnailContainer.setAttribute('role', 'grid');
+                pdfPageThumbnailContainer.setAttribute('aria-label', 'PDF Pages');
+
+                const pageCount = currentPdfEditDoc.getPageCount();
+                pdfInsertPageNumberInput.max = pageCount + 1;
+                if (pageCount === 0) { pdfPageThumbnailContainer.innerHTML = '<p class="text-sm text-gray-500 p-4 text-center">This PDF has no pages.</p>'; setPdfEditButtonsDisabled(true); updatePdfUndoRedoButtons(); resetProgressBar(pdfEditProgressBar, pdfEditProgressBarContainer); return;}
+                setPdfEditButtonsDisabled(false); updatePdfUndoRedoButtons(); updateProgressBar(pdfEditProgressBar, pdfEditProgressBarContainer, 5);
+                let renderedCount = 0; const originalMessage = appMessageArea.textContent || `Loaded ${pageCount} pages. Select pages for actions.`;
+
+                const renderPromises = [];
+                for (let i = 0; i < pageCount; i++) {
+                    const pageItem = document.createElement('div'); pageItem.classList.add('page-item'); pageItem.dataset.pageIndex = i; pageItem.draggable = true;
+                    pageItem.setAttribute('tabindex', '0'); pageItem.setAttribute('role', 'gridcell'); pageItem.setAttribute('aria-label', `Page ${i + 1}`);
+
+                    pageItem.addEventListener('click', (e) => { if (e.target.closest('button') || e.target.closest('input[type="checkbox"]')) return; const pageIndex = parseInt(pageItem.dataset.pageIndex); openPdfPagePreviewModal(pageIndex + 1); });
+                    pageItem.addEventListener('contextmenu', (e) => { pdfElementThatOpenedModal = pageItem; const pageIndex = parseInt(pageItem.dataset.pageIndex); pdfPageContextMenu.setAttribute('aria-labelledby', `page_canvas_${pageIndex}`); showPdfPageContextMenu(e, pageIndex); });
+                    pageItem.addEventListener('dragstart', (e) => { pdfDraggedEditPage = pageItem; setTimeout(() => pageItem.classList.add('dragging'), 0); e.dataTransfer.effectAllowed = 'move';});
+                    pageItem.addEventListener('dragend', () => { pageItem.classList.remove('dragging'); pdfPageThumbnailContainer.querySelectorAll('.page-item').forEach(p => p.classList.remove('drop-target-before', 'drop-target-after')); if(pdfDraggedEditPage) updatePdfPageOrderFromDOMAndReRender(); pdfDraggedEditPage = null; });
+                    pageItem.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault(); const checkbox = pageItem.querySelector('input[type="checkbox"]');
+                            if (checkbox) { checkbox.checked = !checkbox.checked; const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true, view: window, shiftKey: e.shiftKey }); checkbox.dispatchEvent(clickEvent); }
+                        } else if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
+                            e.preventDefault(); const items = Array.from(pdfPageThumbnailContainer.querySelectorAll('.page-item[tabindex="0"]')); const currentIndex = items.indexOf(pageItem); let nextIndex = currentIndex;
+                            let itemsPerRow = 1; if (pdfPageThumbnailContainer.clientWidth > 0 && items.length > 0) { const firstItemStyle = getComputedStyle(items[0]); const firstItemWidth = items[0].offsetWidth + parseFloat(firstItemStyle.marginLeft) + parseFloat(firstItemStyle.marginRight); if (firstItemWidth > 0) itemsPerRow = Math.max(1, Math.floor(pdfPageThumbnailContainer.clientWidth / firstItemWidth));}
+                            if (e.key === 'ArrowRight') nextIndex = (currentIndex + 1);
+                            else if (e.key === 'ArrowLeft') nextIndex = (currentIndex - 1);
+                            else if (e.key === 'ArrowDown') nextIndex = currentIndex + itemsPerRow;
+                            else if (e.key === 'ArrowUp') nextIndex = currentIndex - itemsPerRow;
+                            if (nextIndex >= 0 && nextIndex < items.length) items[nextIndex]?.focus();
+                            else if (e.key === 'ArrowRight' && nextIndex >= items.length) items[0]?.focus();
+                            else if (e.key === 'ArrowLeft' && nextIndex < 0) items[items.length-1]?.focus();
+                        }
+                    });
+
+                    const canvas = document.createElement('canvas'); canvas.id = `pdf_page_canvas_${i}`; pageItem.appendChild(canvas);
+                    const controlsDiv = document.createElement('div'); controlsDiv.classList.add('page-item-controls');
+                    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.id = `pdf_page_edit_checkbox_${i}`; checkbox.dataset.pageIndex = i; checkbox.classList.add('form-checkbox', 'h-4', 'w-4', 'text-indigo-600', 'rounded', 'focus:ring-indigo-500');
+                    checkbox.setAttribute('tabindex', '-1'); checkbox.setAttribute('aria-label', `Select page ${i + 1}`);
+                    checkbox.addEventListener('click', function(event) {
+                        const currentIndex = parseInt(this.dataset.pageIndex);
+                        if (event.shiftKey && pdfLastSelectedCheckboxIndex !== -1 && pdfLastSelectedCheckboxIndex !== currentIndex) {
+                            const allCheckboxes = Array.from(pdfPageThumbnailContainer.querySelectorAll('input[type="checkbox"]')); const start = Math.min(pdfLastSelectedCheckboxIndex, currentIndex); const end = Math.max(pdfLastSelectedCheckboxIndex, currentIndex); const stateToSet = this.checked;
+                            for (let k = start; k <= end; k++) { const cbInRange = allCheckboxes.find(cb => parseInt(cb.dataset.pageIndex) === k); if (cbInRange) cbInRange.checked = stateToSet; }
+                        }
+                        pdfLastSelectedCheckboxIndex = this.checked ? currentIndex : -1;
+                    });
+                    const pageNumSpan = document.createElement('span'); pageNumSpan.textContent = `Page ${i + 1}`; pageNumSpan.classList.add('page-number');
+                    const actionsDiv = document.createElement('div'); actionsDiv.classList.add('page-item-actions', 'flex');
+                    const deleteBtn = document.createElement('button'); deleteBtn.innerHTML = '&#x1F5D1;'; deleteBtn.title = `Delete Page ${i + 1}`; deleteBtn.classList.add('text-red-500', 'hover:text-red-700');
+                    deleteBtn.onclick = async () => { if(await showConfirmation(`Delete page ${i+1}?`)){ await pushPdfUndoState(); await processPdfDeleteSinglePage(i); }};
+                    const extractBtn = document.createElement('button'); extractBtn.innerHTML = '&#x2193;'; extractBtn.title = `Extract Page ${i + 1}`; extractBtn.classList.add('text-purple-500', 'hover:text-purple-700');
+                    extractBtn.onclick = () => processPdfExtractSinglePage(i);
+                    actionsDiv.appendChild(deleteBtn); actionsDiv.appendChild(extractBtn); controlsDiv.appendChild(checkbox); controlsDiv.appendChild(pageNumSpan); controlsDiv.appendChild(actionsDiv); pageItem.appendChild(controlsDiv); pdfPageThumbnailContainer.appendChild(pageItem);
+
+                    const renderTask = currentPdfEditJsDoc.getPage(i + 1).then(pdfPage => { const pageFromPdfLib = currentPdfEditDoc.getPage(i); const rotation = pageFromPdfLib.getRotation().angle; const viewport = pdfPage.getViewport({ scale: 0.25, rotation: rotation }); canvas.height = viewport.height; canvas.width = viewport.width; const renderContext = { canvasContext: canvas.getContext('2d'), viewport: viewport }; return pdfPage.render(renderContext).promise; })
+                    .then(() => { renderedCount++; showAppMessage(`Rendering: ${renderedCount}/${pageCount}...`, 'info', false); updateProgressBar(pdfEditProgressBar, pdfEditProgressBarContainer, (renderedCount / pageCount) * 100); })
+                    .catch(err => { console.error(`Render err pg ${i+1}:`, err); canvas.getContext('2d').fillText('Error', 10, 10); });
+                    renderPromises.push(renderTask);
+                }
+                pdfPageThumbnailContainer.addEventListener('dragover', (e) => {
+                    e.preventDefault(); if (!pdfDraggedEditPage) return;
+                    pdfPageThumbnailContainer.querySelectorAll('.page-item').forEach(p => p.classList.remove('drop-target-before', 'drop-target-after'));
+                    const afterElement = getPdfDragAfterElement(pdfPageThumbnailContainer, e.clientY, pdfDraggedEditPage);
+                    if (pdfDraggedEditPage) { if (afterElement && afterElement !== pdfDraggedEditPage) afterElement.classList.add('drop-target-before'); else if (!afterElement) { const lastElement = pdfPageThumbnailContainer.lastElementChild; if (lastElement && lastElement !== pdfDraggedEditPage) lastElement.classList.add('drop-target-after');}}
+                    if (afterElement == null) pdfPageThumbnailContainer.appendChild(pdfDraggedEditPage); else pdfPageThumbnailContainer.insertBefore(pdfDraggedEditPage, afterElement);
+                });
+                try { await Promise.all(renderPromises); showAppMessage(originalMessage, 'green'); updateProgressBar(pdfEditProgressBar, pdfEditProgressBarContainer, 100); } catch (e) { console.error("Render all error:", e); showAppMessage('Error rendering some thumbnails.', 'orange', true); resetProgressBar(pdfEditProgressBar, pdfEditProgressBarContainer); }
+            }
+            async function updatePdfPageOrderFromDOMAndReRender() {  if (!currentPdfEditDoc) return; await pushPdfUndoState(); showAppMessage('Reordering ...', 'info'); setPdfEditButtonsDisabled(true); pdfEditLoader.classList.remove('hidden'); try { const pageElements = Array.from(pdfPageThumbnailContainer.querySelectorAll('.page-item')); const newIndicesOrder = pageElements.map(el => parseInt(el.dataset.pageIndex)); const pages = currentPdfEditDoc.getPages(); const reorderedPages = newIndicesOrder.map(index => pages[index]); const pageCount = currentPdfEditDoc.getPageCount(); for (let i = 0; i < pageCount; i++) currentPdfEditDoc.removePage(0); reorderedPages.forEach(page => currentPdfEditDoc.addPage(page)); const tempArrayBuffer = await currentPdfEditDoc.save(); currentPdfEditJsDoc = await pdfjsLib.getDocument({ data: tempArrayBuffer.slice(0) }).promise; await renderPdfPagesForEditing(); showAppMessage('Reordered.', 'green'); } catch(e) { console.error("Reorder error:", e); showAppMessage("Reorder failed. Reverting.", "red"); if (pdfUndoStack.length > 0) await undoPdfEditOperation(); } finally { setPdfEditButtonsDisabled(false); pdfEditLoader.classList.add('hidden'); }}
+            async function processPdfDeleteSinglePage(pageIndex) {  if (!currentPdfEditDoc || pageIndex < 0 || pageIndex >= currentPdfEditDoc.getPageCount()) return; if (currentPdfEditDoc.getPageCount() === 1) { showAppMessage('Cannot remove last page.', 'orange'); return; } showAppMessage(`Removing page ${pageIndex + 1}...`, 'info'); pdfEditLoader.classList.remove('hidden'); setPdfEditButtonsDisabled(true); try { currentPdfEditDoc.removePage(pageIndex); const tempArrayBuffer = await currentPdfEditDoc.save(); currentPdfEditJsDoc = await pdfjsLib.getDocument({data: tempArrayBuffer.slice(0) }).promise; await renderPdfPagesForEditing(); showAppMessage(`Page ${pageIndex + 1} removed.`, 'green'); } catch (e) { console.error("Delete single error:", e); showAppMessage(`Delete page error: ${e.message}`, 'red'); } finally { pdfEditLoader.classList.add('hidden'); setPdfEditButtonsDisabled(false); }}
+            async function processPdfExtractSinglePage(pageIndex) {  if (!currentPdfEditDoc || pageIndex < 0 || pageIndex >= currentPdfEditDoc.getPageCount()) return; showAppMessage(`Extracting page ${pageIndex + 1}...`, 'info'); pdfEditLoader.classList.remove('hidden'); setPdfEditButtonsDisabled(true); try { const newPdfDoc = await PDFDocument.create(); const [copiedPage] = await newPdfDoc.copyPages(currentPdfEditDoc, [pageIndex]); newPdfDoc.addPage(copiedPage); const pdfBytes = await newPdfDoc.save(); const originalFileName = currentPdfEditFile ? currentPdfEditFile.name.replace(/\.pdf$/i, '') : 'document'; const blob = new Blob([pdfBytes], { type: 'application/pdf' }); const url = URL.createObjectURL(blob); pdfDownloadExtractedLink.href = url; pdfDownloadExtractedLink.download = `${originalFileName}-page${pageIndex + 1}-extracted.pdf`; pdfDownloadExtractedLink.classList.remove('hidden'); pdfDownloadEditedLink.classList.add('hidden'); showAppMessage(`Page ${pageIndex + 1} extracted.`, 'green'); } catch (e) { console.error("Extract single error:", e); showAppMessage(`Extract page error: ${e.message}`, 'red'); } finally { pdfEditLoader.classList.add('hidden'); setPdfEditButtonsDisabled(false); }}
+            async function processPdfRemoveSelectedPages() {  if (!currentPdfEditDoc || currentPdfEditDoc.getPageCount() === 0) return; const selectedCheckboxes = Array.from(pdfPageThumbnailContainer.querySelectorAll('input[type="checkbox"]:checked')); const pagesToRemoveIndices = selectedCheckboxes.map(cb => parseInt(cb.dataset.pageIndex)).sort((a, b) => b - a); if (pagesToRemoveIndices.length === 0) { showAppMessage('No pages selected.', 'blue'); return; } if (pagesToRemoveIndices.length === currentPdfEditDoc.getPageCount()) { showAppMessage('Cannot remove all pages.', 'orange'); return; } await pushPdfUndoState(); showAppMessage('Removing pages...', 'info'); pdfEditLoader.classList.remove('hidden'); setPdfEditButtonsDisabled(true); try { for (const index of pagesToRemoveIndices) currentPdfEditDoc.removePage(index); const tempArrayBuffer = await currentPdfEditDoc.save(); currentPdfEditJsDoc = await pdfjsLib.getDocument({data: tempArrayBuffer.slice(0) }).promise; await renderPdfPagesForEditing(); showAppMessage(`${pagesToRemoveIndices.length} page(s) removed.`, 'green'); } catch (e) { console.error("Remove selected error:", e); showAppMessage(`Remove pages error: ${e.message}`, 'red'); } finally { pdfEditLoader.classList.add('hidden'); setPdfEditButtonsDisabled(false); }}
+            async function processPdfRotateSelectedPages(angle) {  if (!currentPdfEditDoc || currentPdfEditDoc.getPageCount() === 0) return; const selectedCheckboxes = Array.from(pdfPageThumbnailContainer.querySelectorAll('input[type="checkbox"]:checked')); const pagesToRotateIndices = selectedCheckboxes.map(cb => parseInt(cb.dataset.pageIndex)); if (pagesToRotateIndices.length === 0) { showAppMessage('No pages selected.', 'blue'); return; } if (pagesToRotateIndices.length > 0 && !(await showConfirmation(`Rotate ${pagesToRotateIndices.length} page(s) by ${angle}°?`))) return; await pushPdfUndoState(); showAppMessage('Rotating pages...', 'info'); pdfEditLoader.classList.remove('hidden'); setPdfEditButtonsDisabled(true); try { pagesToRotateIndices.forEach(index => { const page = currentPdfEditDoc.getPage(index); const currentRotation = page.getRotation().angle; page.setRotation(degrees((currentRotation + angle) % 360)); }); const tempArrayBuffer = await currentPdfEditDoc.save(); currentPdfEditJsDoc = await pdfjsLib.getDocument({ data: tempArrayBuffer.slice(0) }).promise; await renderPdfPagesForEditing(); showAppMessage(`${pagesToRotateIndices.length} page(s) rotated.`, 'green'); } catch (e) { console.error("Rotate error:", e); showAppMessage(`Rotate error: ${e.message}`, 'red'); } finally { pdfEditLoader.classList.add('hidden'); setPdfEditButtonsDisabled(false); }}
+            async function processPdfAddBlankPage() { if (!currentPdfEditDoc) { showAppMessage('Load PDF first.', 'orange'); return; } let insertAtIndexStr = prompt(`Insert blank page before (1-${currentPdfEditDoc.getPageCount() + 1}, or blank for end):`, currentPdfEditDoc.getPageCount() + 1); if (insertAtIndexStr === null) return; let insertAtIndex = (insertAtIndexStr.trim() === "") ? currentPdfEditDoc.getPageCount() : parseInt(insertAtIndexStr) - 1; if (isNaN(insertAtIndex) || insertAtIndex < 0 || insertAtIndex > currentPdfEditDoc.getPageCount()) { showAppMessage('Invalid page #.', 'orange'); return; } await pushPdfUndoState(); showAppMessage('Adding blank page...', 'info'); pdfEditLoader.classList.remove('hidden'); setPdfEditButtonsDisabled(true); try { const newPage = currentPdfEditDoc.insertPage(insertAtIndex); const helveticaFont = await currentPdfEditDoc.embedFont(StandardFonts.Helvetica); newPage.drawText('(Blank Page)', { x: 50, y: newPage.getHeight() - 50, font: helveticaFont, size: 12, color: rgb(0.5,0.5,0.5) }); const tempArrayBuffer = await currentPdfEditDoc.save(); currentPdfEditJsDoc = await pdfjsLib.getDocument({data: tempArrayBuffer.slice(0) }).promise; await renderPdfPagesForEditing(); showAppMessage('Blank page added.', 'green'); } catch (e) { console.error("Add blank error:", e); showAppMessage(`Add blank page error: ${e.message}`, 'red'); } finally { pdfEditLoader.classList.add('hidden'); setPdfEditButtonsDisabled(false); }}
+            async function processPdfInsertPages() { const insertFile = pdfToInsertInput.files[0]; const insertBeforePageStr = pdfInsertPageNumberInput.value; if (!currentPdfEditDoc) { showAppMessage('Load base PDF.', 'orange'); return; } if (!insertFile || insertFile.type !== 'application/pdf') { showAppMessage('Select PDF to insert.', 'orange'); return; } let insertAtIndex = (insertBeforePageStr.trim() === "") ? currentPdfEditDoc.getPageCount() : parseInt(insertBeforePageStr) - 1; if (isNaN(insertAtIndex) || insertAtIndex < 0 || insertAtIndex > currentPdfEditDoc.getPageCount()) { showAppMessage('Invalid insert page #.', 'orange'); return; } await pushPdfUndoState(); showAppMessage('Inserting pages...', 'info'); pdfEditLoader.classList.remove('hidden'); setPdfEditButtonsDisabled(true); try { const insertPdfArrayBuffer = await insertFile.arrayBuffer(); const pdfToInsertDoc = await PDFDocument.load(insertPdfArrayBuffer, { ignoreEncryption: true, updateMetadata: false }); const copiedPages = await currentPdfEditDoc.copyPages(pdfToInsertDoc, pdfToInsertDoc.getPageIndices()); for (let i = 0; i < copiedPages.length; i++) currentPdfEditDoc.insertPage(insertAtIndex + i, copiedPages[i]); const tempArrayBuffer = await currentPdfEditDoc.save(); currentPdfEditJsDoc = await pdfjsLib.getDocument({data: tempArrayBuffer.slice(0) }).promise; await renderPdfPagesForEditing(); showAppMessage(`${copiedPages.length} page(s) inserted.`, 'green'); pdfToInsertInput.value = ''; pdfInsertPageNumberInput.value = ''; } catch (e) { console.error("Insert error:", e); showAppMessage(`Insert pages error: ${e.message}`, 'red'); } finally { pdfEditLoader.classList.add('hidden'); setPdfEditButtonsDisabled(false); }}
+            async function savePdfEditedPdf() {  if (!currentPdfEditDoc) { showAppMessage('No PDF loaded.', 'red'); return; } pdfSaveEditedPdfButtonText.textContent = 'Saving...'; pdfEditLoader.classList.remove('hidden'); setPdfEditButtonsDisabled(true); try { const pdfBytes = await currentPdfEditDoc.save(); const blob = new Blob([pdfBytes], { type: 'application/pdf' }); const url = URL.createObjectURL(blob); const originalFileName = currentPdfEditFile ? currentPdfEditFile.name.replace(/\.pdf$/i, '') : 'edited'; pdfDownloadEditedLink.href = url; pdfDownloadEditedLink.download = `${originalFileName}-edited.pdf`; pdfDownloadEditedLink.classList.remove('hidden'); pdfDownloadExtractedLink.classList.add('hidden'); showAppMessage('Edited PDF saved!', 'green'); } catch (e) { console.error('Save error:', e); showAppMessage(`Save error: ${e.message}`, 'red'); } finally { pdfSaveEditedPdfButtonText.textContent = 'Save and Download Edited PDF'; pdfEditLoader.classList.add('hidden'); setPdfEditButtonsDisabled(false); }}
+            async function processPdfExtractSelectedPages() {
+                if (!currentPdfEditDoc || currentPdfEditDoc.getPageCount() === 0) { showAppMessage('No PDF loaded or PDF has no pages.', 'orange'); return; }
+                const selectedCheckboxes = Array.from(pdfPageThumbnailContainer.querySelectorAll('input[type="checkbox"]:checked'));
+                const pagesToExtractIndices = selectedCheckboxes.map(cb => parseInt(cb.dataset.pageIndex)).sort((a, b) => a - b);
+                if (pagesToExtractIndices.length === 0) { showAppMessage('No pages selected for extraction.', 'blue'); return; }
+                showAppMessage('Extracting selected pages...', 'info'); pdfEditLoader.classList.remove('hidden'); setPdfEditButtonsDisabled(true);
+                try {
+                    const newPdfDoc = await PDFDocument.create();
+                    const copiedPages = await newPdfDoc.copyPages(currentPdfEditDoc, pagesToExtractIndices);
+                    copiedPages.forEach(page => newPdfDoc.addPage(page));
+                    const pdfBytes = await newPdfDoc.save();
+                    const originalFileName = currentPdfEditFile ? currentPdfEditFile.name.replace(/\.pdf$/i, '') : 'document';
+                    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                    const url = URL.createObjectURL(blob);
+                    pdfDownloadExtractedLink.href = url;
+                    pdfDownloadExtractedLink.download = `${originalFileName}-selected_pages-extracted-${new Date().toISOString().replace(/[:.]/g, '-')}.pdf`;
+                    pdfDownloadExtractedLink.classList.remove('hidden');
+                    pdfDownloadEditedLink.classList.add('hidden');
+                    showAppMessage(`${pagesToExtractIndices.length} page(s) extracted. Click link to download.`, 'green');
+                } catch (error) {
+                    console.error("Error extracting pages:", error);
+                    showAppMessage(`Error extracting pages: ${error.message}`, 'red');
+                } finally {
+                    pdfEditLoader.classList.add('hidden');
+                    setPdfEditButtonsDisabled(false);
+                }
+            }
+            async function openPdfPagePreviewModal(pdfJsPageNum) { if (!currentPdfEditJsDoc) return; pdfElementThatOpenedModal = document.activeElement; pdfCurrentPreviewPageNum = pdfJsPageNum; pdfCurrentPreviewZoomScale = 1.0; pdfPagePreviewModalTitle.textContent = `Page ${pdfJsPageNum}`; showAppMessage('Loading preview...', 'info'); pdfEditLoader.classList.remove('hidden'); try { await renderPdfPageForPreview(); pdfPagePreviewModal.classList.remove('hidden'); updatePdfZoomLevelIndicator(); pdfClosePreviewModalButton.focus(); showAppMessage(`Previewing page ${pdfJsPageNum}.`, 'green'); } catch (e) { console.error("Preview error:", e); showAppMessage(`Preview error: ${e.message}`, 'red'); closePdfPagePreviewModal(); } finally { pdfEditLoader.classList.add('hidden'); }}
+            function closePdfPagePreviewModal() { pdfPagePreviewModal.classList.add('hidden'); const ctx = pdfPagePreviewCanvas.getContext('2d'); ctx.clearRect(0, 0, pdfPagePreviewCanvas.width, pdfPagePreviewCanvas.height); pdfCurrentPreviewPageNum = null; if (pdfElementThatOpenedModal) { pdfElementThatOpenedModal.focus(); pdfElementThatOpenedModal = null; }}
+            async function renderPdfPageForPreview() { if (!currentPdfEditJsDoc || !pdfCurrentPreviewPageNum) return; const pdfPage = await currentPdfEditJsDoc.getPage(pdfCurrentPreviewPageNum); const pageFromPdfLib = currentPdfEditDoc.getPage(pdfCurrentPreviewPageNum -1); const actualRotation = pageFromPdfLib.getRotation().angle; const viewport = pdfPage.getViewport({ scale: pdfCurrentPreviewZoomScale, rotation: actualRotation }); pdfPagePreviewCanvas.height = viewport.height; pdfPagePreviewCanvas.width = viewport.width; pdfPagePreviewCanvas.style.maxWidth = `${viewport.width}px`; pdfPagePreviewCanvas.style.maxHeight = `${viewport.height}px`; const renderContext = { canvasContext: pdfPagePreviewCanvas.getContext('2d'), viewport: viewport }; await pdfPage.render(renderContext).promise; }
+            function updatePdfZoomLevelIndicator() { pdfZoomLevelIndicator.textContent = `${Math.round(pdfCurrentPreviewZoomScale * 100)}%`; pdfZoomInButton.disabled = pdfCurrentPreviewZoomScale >= PDF_MAX_ZOOM; pdfZoomOutButton.disabled = pdfCurrentPreviewZoomScale <= PDF_MIN_ZOOM; }
+            async function zoomPdfPagePreview(amount) { const newScale = parseFloat((pdfCurrentPreviewZoomScale + amount).toFixed(2)); if (newScale >= PDF_MIN_ZOOM && newScale <= PDF_MAX_ZOOM) { pdfCurrentPreviewZoomScale = newScale; pdfEditLoader.classList.remove('hidden'); try { await renderPdfPageForPreview(); updatePdfZoomLevelIndicator(); } catch (e) { console.error("Zoom error:", e); showAppMessage(`Zoom error: ${e.message}`, 'red'); } finally { pdfEditLoader.classList.add('hidden'); }}}
+
+            function showPdfPageContextMenu(event, pageIndex) {
+                event.preventDefault(); pdfCurrentContextMenuPageIndex = pageIndex; pdfPageContextMenu.innerHTML = '';
+                pdfPageContextMenu.setAttribute('role', 'menu');
+                let firstFocusableItem = null;
+                const actions = [
+                    { label: 'Rotate 90° Left', action: async () => { if(await showConfirmation(`Rotate page ${pageIndex+1} 90° left?`)){ await pushPdfUndoState(); await rotatePdfSinglePage(pdfCurrentContextMenuPageIndex, -90); }}},
+                    { label: 'Rotate 90° Right', action: async () => { if(await showConfirmation(`Rotate page ${pageIndex+1} 90° right?`)){ await pushPdfUndoState(); await rotatePdfSinglePage(pdfCurrentContextMenuPageIndex, 90); }}},
+                    { label: 'Rotate 180°', action: async () => { if(await showConfirmation(`Rotate page ${pageIndex+1} 180°?`)){ await pushPdfUndoState(); await rotatePdfSinglePage(pdfCurrentContextMenuPageIndex, 180); }}},
+                    { type: 'separator' },
+                    { label: 'Extract Page', action: () => processPdfExtractSinglePage(pdfCurrentContextMenuPageIndex) },
+                    { label: 'Delete Page', action: async () => { if (currentPdfEditDoc && currentPdfEditDoc.getPageCount() === 1) { showAppMessage('Cannot remove last page.', 'orange'); return; } if (await showConfirmation(`Delete page ${pdfCurrentContextMenuPageIndex + 1}?`)) { await pushPdfUndoState(); await processPdfDeleteSinglePage(pdfCurrentContextMenuPageIndex); }}}
+                ];
+                actions.forEach(item => {
+                    if (item.type === 'separator') { const sep = document.createElement('div'); sep.className = 'border-t border-gray-200 my-1'; pdfPageContextMenu.appendChild(sep); } else {
+                        const link = document.createElement('a'); link.href = '#'; link.textContent = item.label; link.setAttribute('role', 'menuitem'); link.setAttribute('tabindex', '-1');
+                        link.onclick = async (e) => { e.preventDefault(); await item.action(); pdfPageContextMenu.classList.add('hidden'); if(pdfElementThatOpenedModal) {pdfElementThatOpenedModal.focus(); pdfElementThatOpenedModal = null;} };
+                        pdfPageContextMenu.appendChild(link); if (!firstFocusableItem) firstFocusableItem = link;
+                    }
+                });
+                const { clientX: mouseX, clientY: mouseY } = event; const menuWidth = pdfPageContextMenu.offsetWidth || 150; const menuHeight = pdfPageContextMenu.offsetHeight || 200; const vpWidth = window.innerWidth; const vpHeight = window.innerHeight;
+                let top = mouseY; let left = mouseX; if (mouseX + menuWidth > vpWidth) left = mouseX - menuWidth; if (mouseY + menuHeight > vpHeight) top = mouseY - menuHeight;
+                pdfPageContextMenu.style.top = `${top}px`; pdfPageContextMenu.style.left = `${left}px`; pdfPageContextMenu.classList.remove('hidden');
+                if (firstFocusableItem) firstFocusableItem.focus();
+                pdfPageContextMenu.onkeydown = (e) => handlePdfContextMenuKeyDown(e);
+            }
+            function handlePdfContextMenuKeyDown(e) {
+                if (pdfPageContextMenu.classList.contains('hidden')) return; const items = Array.from(pdfPageContextMenu.querySelectorAll('a[role="menuitem"]')); if (items.length === 0) return;
+                const activeElement = document.activeElement; let currentIndex = items.indexOf(activeElement);
+                if (e.key === 'ArrowDown') { e.preventDefault(); currentIndex = (currentIndex + 1) % items.length; items[currentIndex].focus(); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); currentIndex = (currentIndex - 1 + items.length) % items.length; items[currentIndex].focus(); }
+                else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (activeElement && typeof activeElement.click === 'function') activeElement.click(); }
+                else if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); pdfPageContextMenu.classList.add('hidden'); if(pdfElementThatOpenedModal) {pdfElementThatOpenedModal.focus(); pdfElementThatOpenedModal = null;}}
+            }
+            async function rotatePdfSinglePage(pageIndex, angle) { if (!currentPdfEditDoc || pageIndex < 0 || pageIndex >= currentPdfEditDoc.getPageCount()) return; showAppMessage(`Rotating page ${pageIndex + 1}...`, 'info'); pdfEditLoader.classList.remove('hidden'); setPdfEditButtonsDisabled(true); try { const page = currentPdfEditDoc.getPage(pageIndex); const currentRotation = page.getRotation().angle; page.setRotation(degrees((currentRotation + angle) % 360)); const tempArrayBuffer = await currentPdfEditDoc.save(); currentPdfEditJsDoc = await pdfjsLib.getDocument({ data: tempArrayBuffer.slice(0) }).promise; await renderPdfPagesForEditing(); showAppMessage(`Page ${pageIndex + 1} rotated.`, 'green'); } catch (e) { console.error(`Rotate pg ${pageIndex + 1} error:`, e); showAppMessage(`Rotate page error: ${e.message}`, 'red'); if (pdfUndoStack.length > 0) { const lastState = pdfUndoStack.pop(); if(pdfUndoStack.length > 0) await undoPdfEditOperation(); else await loadPdfStateFromBuffer(lastState); }} finally { pdfEditLoader.classList.add('hidden'); setPdfEditButtonsDisabled(false); }}
+
+            // PDF Split Section Functions
+            function createPdfRangeCriterionItem(containerIdSuffix, totalPages) {
+                const uniqueId = Date.now() + Math.random().toString(36).substring(2, 7);
+                const criterionItem = document.createElement('div'); criterionItem.className = 'range-criterion-item';
+                criterionItem.innerHTML = `
+                    <label for="from_${containerIdSuffix}_${uniqueId}" class="text-xs text-gray-600 whitespace-nowrap">From page:</label>
+                    <input type="number" id="from_${containerIdSuffix}_${uniqueId}" min="1" ${totalPages > 0 ? `max="${totalPages}"` : ''} class="p-1 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="Start">
+                    <label for="to_${containerIdSuffix}_${uniqueId}" class="text-xs text-gray-600 whitespace-nowrap">To page:</label>
+                    <input type="text" id="to_${containerIdSuffix}_${uniqueId}" class="p-1 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="End or 'end'">
+                    <button type="button" class="remove-range-btn text-red-500 hover:text-red-700 text-xs font-semibold ml-auto flex items-center" title="Remove this range">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-0.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>Remove</button>`;
+                criterionItem.querySelector('.remove-range-btn').addEventListener('click', (e) => { e.stopPropagation(); criterionItem.remove(); });
+                setTimeout(() => { criterionItem.querySelector('input[type="number"]')?.focus(); }, 0);
+                return criterionItem;
+            }
+            async function handlePdfBookmarkOptionDisplay() {
+                pdfBookmarkInfoDiv.classList.remove('hidden'); pdfExecuteSplitButton.disabled = true; pdfBookmarkInfoDiv.textContent = 'Checking for bookmarks...';
+                if (!currentPdfSplitDoc) { pdfBookmarkInfoDiv.textContent = 'Load a PDF first.'; return; }
+                try {
+                    const outlines = await currentPdfSplitDoc.getOutlines();
+                    const actionableBookmarks = outlines.filter(o => typeof o.getPage === 'function' || (o.dest && (typeof o.dest === 'string' || Array.isArray(o.dest))));
+                    if (actionableBookmarks.length > 0) {
+                        pdfBookmarkInfoDiv.innerHTML = `Found <strong>${actionableBookmarks.length} top-level bookmark(s)</strong>.<br>The PDF will be split starting at each of these bookmarks.`;
+                        pdfExecuteSplitButton.disabled = false;
+                    } else pdfBookmarkInfoDiv.textContent = 'No actionable top-level bookmarks found.';
+                } catch (e) { console.error("Error reading bookmarks:", e); pdfBookmarkInfoDiv.textContent = 'Could not read bookmarks or an error occurred.'; }
+            }
+            function updatePdfSplitInputStates() {
+                const selectedType = document.querySelector('input[name="pdfSplitType"]:checked')?.value; if (!selectedType) return;
+                pdfSplitEveryXPagesInput.disabled = (selectedType !== 'everyX');
+                pdfCustomRangesSeparateContainer.classList.toggle('hidden', selectedType !== 'customRangesSeparate');
+                pdfAddCustomRangeSeparateButton.disabled = (selectedType !== 'customRangesSeparate');
+                pdfCustomRangesSeparateContainer.querySelectorAll('input, button:not(.remove-range-btn)').forEach(el => el.disabled = (selectedType !== 'customRangesSeparate'));
+                pdfBookmarkInfoDiv.classList.add('hidden'); pdfExecuteSplitButton.disabled = !currentPdfSplitDoc;
+
+                allPdfSplitOptionBlocks.forEach(block => {
+                    const radio = block.querySelector('input[type="radio"]'); const blockValue = block.dataset.splitOptionValue;
+                    if (blockValue === selectedType) {
+                        block.classList.add('selected-option');
+                        if (selectedType === 'everyX' && !pdfSplitEveryXPagesInput.disabled) pdfSplitEveryXPagesInput.focus();
+                        else if (selectedType === 'customRangesSeparate' && !pdfAddCustomRangeSeparateButton.disabled) { if (pdfCustomRangesSeparateContainer.children.length === 0) pdfCustomRangesSeparateContainer.appendChild(createPdfRangeCriterionItem('sep', totalPagesInLoadedPdfForSplit)); else pdfCustomRangesSeparateContainer.querySelector('input[type="number"]')?.focus(); }
+                    } else block.classList.remove('selected-option');
+                });
+                if (selectedType === 'bookmarks') handlePdfBookmarkOptionDisplay();
+            }
+            function getPdfRangesFromGuidedInput(containerElement) {
+                const ranges = [];
+                const items = containerElement.querySelectorAll('.range-criterion-item');
+                items.forEach((item, index) => {
+                    const fromInput = item.querySelectorAll('input')[0]; const toInput = item.querySelectorAll('input')[1];
+                    const fromVal = parseInt(fromInput.value); let toValStr = toInput.value.trim().toLowerCase(); let toVal;
+                    if (toValStr === 'end' || (toValStr === '' && fromInput.value.trim() !== '')) { toVal = totalPagesInLoadedPdfForSplit; if (toValStr === '' && fromInput.value.trim() !== '') toVal = fromVal; } else toVal = parseInt(toValStr);
+                    if (!isNaN(fromVal) && fromVal >= 1 && fromVal <= totalPagesInLoadedPdfForSplit && !isNaN(toVal) && toVal >= fromVal && toVal >= 1 && toVal <= totalPagesInLoadedPdfForSplit) { ranges.push({ name: `${fromVal}${fromVal === toVal ? '' : '-' + toVal}`, indices: Array.from({ length: toVal - fromVal + 1 }, (_, k) => fromVal - 1 + k) }); }
+                    else { console.warn(`Invalid range: From '${fromInput.value}', To '${toInput.value}'`); showAppMessage(`Range item ${index + 1} is invalid.`, 'orange', true); }
+                });
+                return ranges;
+            }
+            async function executePdfSplit() {
+                if (!currentPdfSplitDoc) { showAppMessage('No PDF loaded.', 'red'); return; }
+                const selectedSplitType = document.querySelector('input[name="pdfSplitType"]:checked')?.value; if (!selectedSplitType) { showAppMessage('Select split option.', 'orange'); return; }
+                pdfExecuteSplitButtonText.textContent = 'Splitting...'; pdfSplitLoader.classList.remove('hidden'); pdfExecuteSplitButton.disabled = true; pdfSplitResultsContainer.innerHTML = '';
+                let generatedFileCount = 0; const originalFileNameBase = pdfToSplitInput.files[0] ? pdfToSplitInput.files[0].name.replace(/\.pdf$/i, '') : 'split_doc';
+                resetProgressBar(pdfSplitProgressBar, pdfSplitProgressBarContainer);
+                try {
+                    const totalPages = currentPdfSplitDoc.getPageCount(); updateProgressBar(pdfSplitProgressBar, pdfSplitProgressBarContainer, 5);
+                    if (selectedSplitType === 'eachPage') { for (let i = 0; i < totalPages; i++) { const newPdf = await PDFDocument.create(); const [copiedPage] = await newPdf.copyPages(currentPdfSplitDoc, [i]); newPdf.addPage(copiedPage); await saveAndOfferPdfSplitDownload(newPdf, `${originalFileNameBase}-page-${i + 1}`); generatedFileCount++; updateProgressBar(pdfSplitProgressBar, pdfSplitProgressBarContainer, ((i+1)/totalPages)*100); }}
+                    else if (selectedSplitType === 'everyX') { const x = parseInt(pdfSplitEveryXPagesInput.value) || 1; if (x < 1) { showAppMessage('# pages must be >= 1.', 'orange'); /* reset */ return; } let partsCount = Math.ceil(totalPages / x); for (let i = 0; i < totalPages; i += x) { showAppMessage(`Part ${generatedFileCount + 1}/${partsCount}...`, 'info'); const newPdf = await PDFDocument.create(); const pageIndices = Array.from({length: Math.min(x, totalPages - i)}, (_, k) => i + k); const copiedPages = await newPdf.copyPages(currentPdfSplitDoc, pageIndices); copiedPages.forEach(p => newPdf.addPage(p)); await saveAndOfferPdfSplitDownload(newPdf, `${originalFileNameBase}-part-${generatedFileCount + 1}`); generatedFileCount++; updateProgressBar(pdfSplitProgressBar, pdfSplitProgressBarContainer, (generatedFileCount/partsCount)*100); }}
+                    else if (selectedSplitType === 'customRangesSeparate') {
+                        const ranges = getPdfRangesFromGuidedInput(pdfCustomRangesSeparateContainer);
+                        if (ranges.length === 0 && pdfCustomRangesSeparateContainer.children.length > 0) showAppMessage('No valid ranges entered.', 'orange');
+                        else if (ranges.length === 0) showAppMessage('Add page ranges to split by.', 'orange');
+                        else { for (let r = 0; r < ranges.length; r++) { const range = ranges[r]; showAppMessage(`Range "${range.name}" (${r+1}/${ranges.length})...`, 'info'); const newPdf = await PDFDocument.create(); const copiedPages = await newPdf.copyPages(currentPdfSplitDoc, range.indices); copiedPages.forEach(p => newPdf.addPage(p)); await saveAndOfferPdfSplitDownload(newPdf, `${originalFileNameBase}-range-${range.name}`); generatedFileCount++; updateProgressBar(pdfSplitProgressBar, pdfSplitProgressBarContainer, ((r+1)/ranges.length)*100); }}
+                    } else if (selectedSplitType === 'bookmarks') {
+                        const outlines = await currentPdfSplitDoc.getOutlines(); const pageRefs = new Set(); const getPageNumberFromRef = async (ref) => { for (let i = 0; i < currentPdfSplitDoc.getPageCount(); i++) { if (currentPdfSplitDoc.getPage(i).ref === ref) return i; } return -1; }; const bookmarkPageIndices = [];
+                        for (const outline of outlines) { try { const page = await outline.getPage(); if (page && page.ref) { const pageIndex = await getPageNumberFromRef(page.ref); if (pageIndex !== -1 && !pageRefs.has(page.ref.toString())) { bookmarkPageIndices.push(pageIndex); pageRefs.add(page.ref.toString()); }}} catch (err) { console.warn("Bookmark error:", outline.title, err); }}
+                        const sortedUniqueBookmarkIndices = [...new Set(bookmarkPageIndices)].sort((a, b) => a - b);
+                        if (sortedUniqueBookmarkIndices.length > 0) {
+                            showAppMessage(`Splitting by ${sortedUniqueBookmarkIndices.length} bookmarks...`, 'info'); let lastSplitEnd = 0;
+                            for (let i = 0; i < sortedUniqueBookmarkIndices.length; i++) { const bookmarkIndex = sortedUniqueBookmarkIndices[i]; const partIndices = Array.from({ length: bookmarkIndex - lastSplitEnd }, (_, k) => lastSplitEnd + k); if (partIndices.length > 0) { const newPdf = await PDFDocument.create(); const copied = await newPdf.copyPages(currentPdfSplitDoc, partIndices); copied.forEach(p => newPdf.addPage(p)); await saveAndOfferPdfSplitDownload(newPdf, `${originalFileNameBase}-bookmark-${i + 1}_p${partIndices[0]+1}-${partIndices[partIndices.length-1]+1}`); generatedFileCount++; } lastSplitEnd = bookmarkIndex; updateProgressBar(pdfSplitProgressBar, pdfSplitProgressBarContainer, ((i + 1) / (sortedUniqueBookmarkIndices.length +1)) * 100); }
+                            const lastPartIndices = Array.from({ length: totalPages - lastSplitEnd }, (_, k) => lastSplitEnd + k); if (lastPartIndices.length > 0) { const newPdf = await PDFDocument.create(); const copied = await newPdf.copyPages(currentPdfSplitDoc, lastPartIndices); copied.forEach(p => newPdf.addPage(p)); await saveAndOfferPdfSplitDownload(newPdf, `${originalFileNameBase}-bookmark-${sortedUniqueBookmarkIndices.length + 1}_p${lastPartIndices[0]+1}-${lastPartIndices[lastPartIndices.length-1]+1}`); generatedFileCount++; }
+                        } else showAppMessage('No actionable bookmarks found.', 'orange');
+                    }
+                    if(generatedFileCount > 0) showAppMessage(`${generatedFileCount} PDF(s) generated.`, 'green'); else if (!pdfSplitResultsContainer.hasChildNodes()) showAppMessage('No PDFs generated.', 'orange');
+                    updateProgressBar(pdfSplitProgressBar, pdfSplitProgressBarContainer, 100);
+                } catch (e) { console.error("Split error:", e); showAppMessage("Split error: " + e.message, "red"); resetProgressBar(pdfSplitProgressBar, pdfSplitProgressBarContainer); }
+                finally { pdfExecuteSplitButtonText.textContent = 'Split PDF'; pdfSplitLoader.classList.add('hidden'); pdfExecuteSplitButton.disabled = !currentPdfSplitDoc; if(!currentPdfSplitDoc) resetProgressBar(pdfSplitProgressBar, pdfSplitProgressBarContainer); }
+            }
+            async function saveAndOfferPdfSplitDownload(pdfDoc, downloadNameSuffix) { const pdfBytes = await pdfDoc.save(); const blob = new Blob([pdfBytes], { type: 'application/pdf' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `${downloadNameSuffix}.pdf`; link.textContent = `Download ${downloadNameSuffix.split('/').pop()}`; link.classList.add('block', 'text-indigo-600', 'hover:underline', 'mb-1', 'text-sm'); pdfSplitResultsContainer.appendChild(link); }
+
+            // PDF Event Listener Attachments
+            pdfTabMerge.addEventListener('click', () => switchPdfSubTab(pdfTabMerge, pdfMergeSection));
+            pdfTabEdit.addEventListener('click', () => switchPdfSubTab(pdfTabEdit, pdfEditSection));
+            pdfTabSplit.addEventListener('click', () => switchPdfSubTab(pdfTabSplit, pdfSplitSection));
+
+            pdfFilesInput.addEventListener('change', handlePdfFilesForMerge);
+            pdfMergeButton.addEventListener('click', mergePdfFiles);
+            ['dragenter', 'dragover'].forEach(eventName => { pdfMergeSection.addEventListener(eventName, () => { if (currentPdfSubTab === pdfTabMerge) pdfMergeSection.classList.add('pdf-drop-zone-active'); }, false); });
+            ['dragleave', 'drop'].forEach(eventName => { pdfMergeSection.addEventListener(eventName, () => { pdfMergeSection.classList.remove('pdf-drop-zone-active'); }, false); });
+            pdfMergeSection.addEventListener('drop', (e) => { preventDefaultsGlobal(e); if (currentPdfSubTab === pdfTabMerge) { pdfFilesInput.files = e.dataTransfer.files; const changeEvent = new Event('change', { bubbles: true }); pdfFilesInput.dispatchEvent(changeEvent); } }, false);
+
+            pdfToEditInput.addEventListener('change', handlePdfToEdit);
+            pdfRemoveSelectedPagesButton.addEventListener('click', async () => { const selectedCheckboxes = Array.from(pdfPageThumbnailContainer.querySelectorAll('input[type="checkbox"]:checked')); if (selectedCheckboxes.length > 0 && !pdfRemoveSelectedPagesButton.disabled) { if (await showConfirmation(`Remove selected pages?`)) await processPdfRemoveSelectedPages(); } else if (selectedCheckboxes.length === 0) showAppMessage('No pages selected for removal.', 'blue'); });
+            pdfExtractSelectedPagesButton.addEventListener('click', processPdfExtractSelectedPages);
+            pdfAddBlankPageButton.addEventListener('click', processPdfAddBlankPage);
+            pdfRotateLeftButton.addEventListener('click', () => processPdfRotateSelectedPages(-90));
+            pdfRotateRightButton.addEventListener('click', () => processPdfRotateSelectedPages(90));
+            pdfRotate180Button.addEventListener('click', () => processPdfRotateSelectedPages(180));
+            pdfInsertPagesButton.addEventListener('click', processPdfInsertPages);
+            pdfSaveEditedPdfButton.addEventListener('click', savePdfEditedPdf);
+            pdfUndoButton.addEventListener('click', undoPdfEditOperation);
+            pdfRedoButton.addEventListener('click', redoPdfEditOperation);
+            pdfSelectAllPagesButton.addEventListener('click', () => { pdfPageThumbnailContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true); });
+            pdfDeselectAllPagesButton.addEventListener('click', () => { pdfPageThumbnailContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false); });
+            pdfClosePreviewModalButton.addEventListener('click', closePdfPagePreviewModal);
+            pdfZoomInButton.addEventListener('click', () => zoomPdfPagePreview(PDF_ZOOM_STEP));
+            pdfZoomOutButton.addEventListener('click', () => zoomPdfPagePreview(-PDF_ZOOM_STEP));
+            pdfPagePreviewModal.addEventListener('click', (e) => { if (e.target === pdfPagePreviewModal) closePdfPagePreviewModal(); });
+            document.addEventListener('click', (e) => { if (!pdfPageContextMenu.classList.contains('hidden') && !pdfPageContextMenu.contains(e.target)) pdfPageContextMenu.classList.add('hidden'); });
+            pdfPageContextMenu.addEventListener('click', (e) => e.stopPropagation());
+
+            pdfToSplitInput.addEventListener('change', async (event) => {
+                const file = event.target.files[0];
+                if (!file || file.type !== 'application/pdf') { showAppMessage('Select PDF.', 'red'); pdfSplitOptionsContainer.classList.add('hidden'); currentPdfSplitDoc = null; currentPdfSplitJsDoc = null; totalPagesInLoadedPdfForSplit = 0; pdfExecuteSplitButton.disabled = true; resetProgressBar(pdfSplitProgressBar, pdfSplitProgressBarContainer); updatePdfSplitInputStates(); return; }
+                showAppMessage(`Loading '${file.name}'...`, 'info'); resetProgressBar(pdfSplitProgressBar, pdfSplitProgressBarContainer);
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    currentPdfSplitDoc = await PDFDocument.load(arrayBuffer.slice(0), { ignoreEncryption: true });
+                    totalPagesInLoadedPdfForSplit = currentPdfSplitDoc.getPageCount();
+                    pdfCustomRangesSeparateContainer.innerHTML = '';
+                    pdfSplitOptionsContainer.classList.remove('hidden'); pdfExecuteSplitButton.disabled = false; pdfSplitResultsContainer.innerHTML = '';
+                    showAppMessage(`'${file.name}' loaded (${totalPagesInLoadedPdfForSplit} pages). Choose options.`, 'green');
+                    updatePdfSplitInputStates();
+                } catch (e) { console.error("Load split PDF error:", e); showAppMessage("Load split PDF error: " + e.message, "red"); currentPdfSplitDoc = null; currentPdfSplitJsDoc = null; totalPagesInLoadedPdfForSplit = 0; pdfSplitOptionsContainer.classList.add('hidden'); pdfExecuteSplitButton.disabled = true; updatePdfSplitInputStates(); }
+            });
+            pdfSplitTypeRadios.forEach(radio => { radio.addEventListener('change', updatePdfSplitInputStates); });
+            allPdfSplitOptionBlocks.forEach(block => { block.addEventListener('click', (e) => { if (e.target.closest('.remove-range-btn')) return; const radio = block.querySelector('input[type="radio"]'); if (radio && !radio.checked) { radio.checked = true; const changeEvent = new Event('change', { bubbles: true }); radio.dispatchEvent(changeEvent); }}); });
+            pdfAddCustomRangeSeparateButton.addEventListener('click', (e) => { e.stopPropagation(); pdfCustomRangesSeparateContainer.appendChild(createPdfRangeCriterionItem('sep', totalPagesInLoadedPdfForSplit)); });
+            pdfExecuteSplitButton.addEventListener('click', executePdfSplit);
+
+            // --- Image Tools Logic (from SnapshotStitcher2.17.html) ---
+            const { jsPDF } = window.jspdf;
+
+            // Image DOM Elements
+            const imageFilesInput = document.getElementById('imageFilesInput');
+            const imageStitchButton = document.getElementById('imageStitchButton');
+            const imageResetButton = document.getElementById('imageResetButton');
+            const imageClearImagesButton = document.getElementById('imageClearImagesButton');
+            const imageUndoButton = document.getElementById('imageUndoButton');
+            const imageRedoButton = document.getElementById('imageRedoButton');
+            const imageStatusDiv = document.getElementById('imageStatus');
+            const imageStitchedImageContainerOuter = document.getElementById('imageStitchedImageContainerOuter');
+            const imageStitchedImage = document.getElementById('imageStitchedImage');
+            const imageDownloadLinkContainer = document.getElementById('imageDownloadLinkContainer');
+            const imageDownloadImageLink = document.getElementById('imageDownloadImageLink');
+            const imageDownloadPdfLink = document.getElementById('imageDownloadPdfLink');
+            const imageSpinner = document.getElementById('imageSpinner');
+            const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+            const imagePreviewPlaceholder = document.getElementById('imagePreviewPlaceholder');
+            const imageAlignmentSelect = document.getElementById('imageAlignment');
+            const imageQualitySlider = document.getElementById('imageQuality');
+            const imageQualityValueSpan = document.getElementById('imageQualityValue');
+            const imageQualityControlContainer = document.getElementById('imageQualityControlContainer');
+            const imageQualityPreviewContainer = document.getElementById('imageQualityPreviewContainer');
+            const imageQualityPreviewCanvas = document.getElementById('imageQualityPreview');
+            const imageDropZone = document.getElementById('imageDropZone');
+            const imageOutputFilenameInput = document.getElementById('imageOutputFilename');
+            const imageStitchDirectionSelect = document.getElementById('imageStitchDirection');
+            const imageSpacingInput = document.getElementById('imageSpacing');
+            const imageOutputFormatSelect = document.getElementById('imageOutputFormat');
+            const imageBackgroundColorContainer = document.getElementById('imageBackgroundColorContainer');
+            const imageBackgroundColorInput = document.getElementById('imageBackgroundColor');
+            const imagePdfPageSizeSelect = document.getElementById('imagePdfPageSize');
+            const imageViewLargerButton = document.getElementById('imageViewLargerButton');
+            const imageDetailedPreviewModal = document.getElementById('imageDetailedPreviewModal');
+            const imageModalImage = document.getElementById('imageModalImage');
+            const imageModalCloseButton = document.getElementById('imageModalCloseButton');
+            const imageCropModal = document.getElementById('imageCropModal');
+            const imageCropElement = document.getElementById('imageCropElement');
+            const imageCropConfirmButton = document.getElementById('imageCropConfirm');
+            const imageCropCancelButton = document.getElementById('imageCropCancel');
+            const imageLivePreviewContainer = document.getElementById('imageLivePreviewContainer');
+            const imageLivePreviewCanvas = document.getElementById('imageLivePreviewCanvas');
+            const imageWatermarkTextInput = document.getElementById('imageWatermarkText');
+            const imageWatermarkPositionSelect = document.getElementById('imageWatermarkPosition');
+
+            // Image State Variables
+            let imageSelectedFileObjects = [];
+            let imageStitchedCanvas = null;
+            let imageDraggedItem = null;
+            let imageCropperInstance = null;
+            let imageHistory = [];
+            let imageHistoryIndex = -1;
+
+            // Image Configuration
+            const IMAGE_MAX_FILES = 20;
+            const IMAGE_MAX_FILE_SIZE_MB = 10;
+            const IMAGE_MAX_FILE_SIZE_BYTES = IMAGE_MAX_FILE_SIZE_MB * 1024 * 1024;
+            const IMAGE_MAX_CANVAS_DIMENSION = 16384;
+            const IMAGE_MAX_ROTATION_PREVIEW_DIMENSION = 2000;
+            const IMAGE_MAX_LIVE_PREVIEW_WIDTH = 400;
+            const IMAGE_MAX_LIVE_PREVIEW_IMAGE_DIM = 150;
+            const IMAGE_VALID_MIME_TYPES = ['image/jpeg', 'image/png'];
+
+            // LocalStorage Keys (prefixed to avoid conflicts)
+            const IMAGE_LS_PREFIX = 'unifiedStitcher_v1_';
+            const IMAGE_LS_ALIGNMENT_KEY = IMAGE_LS_PREFIX + 'alignment';
+            const IMAGE_LS_QUALITY_KEY = IMAGE_LS_PREFIX + 'quality';
+            const IMAGE_LS_DIRECTION_KEY = IMAGE_LS_PREFIX + 'direction';
+            const IMAGE_LS_SPACING_KEY = IMAGE_LS_PREFIX + 'spacing';
+            const IMAGE_LS_OUTPUT_FORMAT_KEY = IMAGE_LS_PREFIX + 'outputFormat';
+            const IMAGE_LS_BG_COLOR_KEY = IMAGE_LS_PREFIX + 'bgColor';
+            const IMAGE_LS_PDF_PAGE_SIZE_KEY = IMAGE_LS_PREFIX + 'pdfPageSize';
+            const IMAGE_LS_WATERMARK_TEXT_KEY = IMAGE_LS_PREFIX + 'watermarkText';
+            const IMAGE_LS_WATERMARK_POSITION_KEY = IMAGE_LS_PREFIX + 'watermarkPosition';
+
+            // Image Utility Functions
+            function updateImageStatus(message, isError = false) {
+                imageStatusDiv.textContent = message;
+                imageStatusDiv.classList.toggle('text-red-600', isError);
+                imageStatusDiv.classList.toggle('text-gray-600', !isError);
+                imageStatusDiv.classList.toggle('bg-red-100', isError);
+                imageStatusDiv.classList.toggle('bg-gray-100', !isError);
+                imageStatusDiv.classList.toggle('font-semibold', isError);
+            }
+
+            function sanitizeImageFileName(baseName, extension) {
+                const validBaseName = baseName.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_{2,}/g, '_');
+                return `${validBaseName}${extension}`;
+            }
+
+            function clearOnlyImages(skipHistorySave = false) {
+                imageSelectedFileObjects = [];
+                imageFilesInput.value = '';
+                displayImagePreviews();
+                imageStitchButton.disabled = true;
+                imageStitchedImageContainerOuter.classList.add('hidden');
+                imageDownloadLinkContainer.classList.add('hidden');
+                imageViewLargerButton.classList.add('hidden');
+                imageStitchedImage.src = '#';
+                imageModalImage.src = '#';
+                updateImageStatus('Images cleared. Select new images to stitch.');
+                cleanupImageCanvas();
+                if (imageQualityPreviewContainer) imageQualityPreviewContainer.classList.add('hidden');
+                if (!skipHistorySave) saveImageState();
+                updateImageLivePreview();
+            }
+
+            function resetImageUI(skipHistorySave = false) {
+                clearOnlyImages(true);
+                imageOutputFilenameInput.value = '';
+                imageWatermarkTextInput.value = '';
+                loadImageSettings();
+                updateImageOutputFormatUI();
+                updateImageStatus('Select JPG or PNG images and click "Stitch Images".');
+                imageResetButton.disabled = false;
+                if (!skipHistorySave) saveImageState();
+                updateImageLivePreview();
+            }
+
+            function cleanupImageCanvas() {
+                if (imageStitchedCanvas) {
+                    const ctx = imageStitchedCanvas.getContext('2d');
+                    ctx.clearRect(0, 0, imageStitchedCanvas.width, imageStitchedCanvas.height);
+                    imageStitchedCanvas.width = 0;
+                    imageStitchedCanvas.height = 0;
+                    imageStitchedCanvas = null;
+                }
+            }
+
+            // Image Undo/Redo Functionality
+            function saveImageState() {
+                const stateToSave = imageSelectedFileObjects.map(fo => ({
+                    id: fo.id,
+                    file: fo.file,
+                    rotation: fo.rotation,
+                    originalName: fo.originalName || fo.file.name,
+                    originalType: fo.originalType || fo.file.type,
+                }));
+
+                imageHistory = imageHistory.slice(0, imageHistoryIndex + 1);
+                imageHistory.push(stateToSave);
+                imageHistoryIndex++;
+                imageUndoButton.disabled = imageHistoryIndex === 0;
+                imageRedoButton.disabled = imageHistoryIndex >= imageHistory.length - 1;
+            }
+
+            function undoImageOperation() {
+                if (imageHistoryIndex > 0) {
+                    imageHistoryIndex--;
+                    imageSelectedFileObjects = imageHistory[imageHistoryIndex].map(item => ({ ...item }));
+                    displayImagePreviews();
+                    updateImageLivePreview();
+                    imageStitchButton.disabled = imageSelectedFileObjects.length === 0;
+                    imageUndoButton.disabled = imageHistoryIndex === 0;
+                    imageRedoButton.disabled = false;
+                }
+            }
+
+            function redoImageOperation() {
+                if (imageHistoryIndex < imageHistory.length - 1) {
+                    imageHistoryIndex++;
+                    imageSelectedFileObjects = imageHistory[imageHistoryIndex].map(item => ({ ...item }));
+                    displayImagePreviews();
+                    updateImageLivePreview();
+                    imageStitchButton.disabled = imageSelectedFileObjects.length === 0;
+                    imageUndoButton.disabled = false;
+                    imageRedoButton.disabled = imageHistoryIndex >= imageHistory.length - 1;
+                }
+            }
+
+            function displayImagePreviews() {
+                imagePreviewContainer.innerHTML = '';
+                if (imageSelectedFileObjects.length === 0) {
+                    imagePreviewContainer.appendChild(imagePreviewPlaceholder);
+                    imagePreviewPlaceholder.classList.remove('hidden');
+                    if (imageQualityPreviewContainer) imageQualityPreviewContainer.classList.add('hidden');
+                    if (imageLivePreviewContainer) imageLivePreviewContainer.classList.add('hidden');
+                    return;
+                }
+                imagePreviewPlaceholder.classList.add('hidden');
+
+                imageSelectedFileObjects.forEach((fileObj) => {
+                    const previewItem = document.createElement('div');
+                    previewItem.className = 'image-preview-item';
+                    previewItem.draggable = true;
+                    previewItem.dataset.id = fileObj.id;
+                    previewItem.setAttribute('aria-label', `Draggable preview of ${fileObj.file.name}`);
+
+                    const imgPreview = document.createElement('img');
+                    imgPreview.src = URL.createObjectURL(fileObj.file);
+                    imgPreview.alt = `Preview of ${fileObj.file.name}`;
+                    imgPreview.title = `${fileObj.file.name}`;
+                    imgPreview.className = 'w-[80px] h-[80px] border border-gray-300 rounded-md shadow-sm object-cover pointer-events-none';
+                    imgPreview.style.transform = `rotate(${fileObj.rotation || 0}deg)`;
+                    imgPreview.onload = () => URL.revokeObjectURL(imgPreview.src);
+
+                    const controlsDiv = document.createElement('div');
+                    controlsDiv.className = 'controls-container';
+
+                    const rotateLeftBtn = document.createElement('button');
+                    rotateLeftBtn.className = 'control-btn rotate-left-btn';
+                    rotateLeftBtn.innerHTML = '&#x21BA;';
+                    rotateLeftBtn.title = 'Rotate Left';
+                    rotateLeftBtn.dataset.id = fileObj.id;
+                    rotateLeftBtn.type = 'button';
+                    rotateLeftBtn.setAttribute('aria-label', `Rotate ${fileObj.file.name} left`);
+                    controlsDiv.appendChild(rotateLeftBtn);
+
+                    const rotateRightBtn = document.createElement('button');
+                    rotateRightBtn.className = 'control-btn rotate-right-btn';
+                    rotateRightBtn.innerHTML = '&#x21BB;';
+                    rotateRightBtn.title = 'Rotate Right';
+                    rotateRightBtn.dataset.id = fileObj.id;
+                    rotateRightBtn.type = 'button';
+                    rotateRightBtn.setAttribute('aria-label', `Rotate ${fileObj.file.name} right`);
+                    controlsDiv.appendChild(rotateRightBtn);
+
+                    const cropBtn = document.createElement('button');
+                    cropBtn.className = 'control-btn crop-btn';
+                    cropBtn.innerHTML = '✂';
+                    cropBtn.title = `Crop ${fileObj.file.name}`;
+                    cropBtn.dataset.id = fileObj.id;
+                    cropBtn.type = 'button';
+                    cropBtn.setAttribute('aria-label', `Crop ${fileObj.file.name}`);
+                    controlsDiv.appendChild(cropBtn);
+
+                    const brightnessBtn = document.createElement('button');
+                    brightnessBtn.className = 'control-btn brightness-btn';
+                    brightnessBtn.innerHTML = '☀';
+                    brightnessBtn.title = `Adjust Brightness ${fileObj.file.name}`;
+                    brightnessBtn.dataset.id = fileObj.id;
+                    brightnessBtn.type = 'button';
+                    brightnessBtn.setAttribute('aria-label', `Adjust brightness for ${fileObj.file.name}`);
+                    controlsDiv.appendChild(brightnessBtn);
+
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'remove-btn';
+                    removeBtn.innerHTML = '&times;';
+                    removeBtn.title = `Remove ${fileObj.file.name}`;
+                    removeBtn.dataset.id = fileObj.id;
+                    removeBtn.type = 'button';
+                    removeBtn.setAttribute('aria-label', `Remove ${fileObj.file.name}`);
+
+                    previewItem.appendChild(imgPreview);
+                    previewItem.appendChild(controlsDiv);
+                    previewItem.appendChild(removeBtn);
+                    imagePreviewContainer.appendChild(previewItem);
+                });
+
+                if (imageSelectedFileObjects.length > 0 && imageQualitySlider && imageQualityPreviewCanvas) {
+                     updateImageQualityPreview();
+                }
+                updateImageLivePreview();
+            }
+
+            function updateImageOutputFormatUI() {
+                const selectedFormat = imageOutputFormatSelect.value;
+                if (selectedFormat === 'image/png') {
+                    imageQualityControlContainer.classList.add('hidden');
+                    imageBackgroundColorContainer.classList.remove('hidden');
+                } else {
+                    imageQualityControlContainer.classList.remove('hidden');
+                    imageBackgroundColorContainer.classList.add('hidden');
+                }
+                imageDownloadImageLink.textContent = `Download as ${selectedFormat === 'image/png' ? 'PNG' : 'JPG'}`;
+                updateImageLivePreview();
+            }
+
+            // Image Multi-Page PDF Support
+            function generateImagePdf(canvas) {
+                const pageSize = imagePdfPageSizeSelect.value || 'a4';
+                const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+                const doc = new jsPDF({ orientation, unit: 'px', format: pageSize });
+
+                const outputFormatForPdf = imageOutputFormatSelect.value;
+                const qualityForPdf = outputFormatForPdf === 'image/jpeg' ? parseFloat(imageQualitySlider.value) : 1.0;
+
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const pageHeight = doc.internal.pageSize.getHeight();
+
+                if ((orientation === 'portrait' && canvas.height > pageHeight) || (orientation === 'landscape' && canvas.width > pageWidth) ) {
+                    let currentPosition = 0;
+                    const totalSize = (orientation === 'portrait') ? canvas.height : canvas.width;
+                    const pageDimension = (orientation === 'portrait') ? pageHeight : pageWidth;
+
+                    while (currentPosition < totalSize) {
+                        const sliceSize = Math.min(pageDimension, totalSize - currentPosition);
+                        const tempCanvas = document.createElement('canvas');
+
+                        let sliceX = 0, sliceY = 0, sliceWidth = 0, sliceHeight = 0;
+                        let drawWidth = 0, drawHeight = 0;
+
+                        if (orientation === 'portrait') {
+                            sliceX = 0;
+                            sliceY = currentPosition;
+                            sliceWidth = canvas.width;
+                            sliceHeight = sliceSize;
+
+                            tempCanvas.width = sliceWidth;
+                            tempCanvas.height = sliceHeight;
+
+                            drawWidth = pageWidth;
+                            drawHeight = sliceHeight * (pageWidth / sliceWidth);
+                        } else {
+                            sliceX = currentPosition;
+                            sliceY = 0;
+                            sliceWidth = sliceSize;
+                            sliceHeight = canvas.height;
+
+                            tempCanvas.width = sliceWidth;
+                            tempCanvas.height = sliceHeight;
+
+                            drawHeight = pageHeight;
+                            drawWidth = sliceWidth * (pageHeight / sliceHeight);
+                        }
+
+                        const ctx = tempCanvas.getContext('2d');
+                        ctx.drawImage(canvas, sliceX, sliceY, sliceWidth, sliceHeight, 0, 0, tempCanvas.width, tempCanvas.height);
+
+                        const imgData = tempCanvas.toDataURL(outputFormatForPdf, qualityForPdf);
+
+                        const finalXOffset = (pageWidth - drawWidth) / 2;
+                        const finalYOffset = (pageHeight - drawHeight) / 2;
+
+                        if (orientation === 'portrait') {
+                             doc.addImage(imgData, outputFormatForPdf === 'image/png' ? 'PNG' : 'JPEG', finalXOffset, 0, drawWidth, drawHeight);
+                        } else {
+                             doc.addImage(imgData, outputFormatForPdf === 'image/png' ? 'PNG' : 'JPEG', 0, finalYOffset, drawWidth, drawHeight);
+                        }
+
+
+                        currentPosition += sliceSize;
+                        if (currentPosition < totalSize) {
+                            doc.addPage();
+                        }
+                    }
+                } else {
+                    let imgWidth = canvas.width;
+                    let imgHeight = canvas.height;
+                    const aspectRatio = imgWidth / imgHeight;
+                    if (imgWidth > pageWidth || imgHeight > pageHeight) {
+                        if (pageWidth / pageHeight > aspectRatio) {
+                            imgHeight = pageHeight; imgWidth = imgHeight * aspectRatio;
+                        } else {
+                            imgWidth = pageWidth; imgHeight = imgWidth / aspectRatio;
+                        }
+                    }
+                    const xOffset = (pageWidth - imgWidth) / 2;
+                    const yOffset = (pageHeight - imgHeight) / 2;
+                    const imgData = canvas.toDataURL(outputFormatForPdf, qualityForPdf);
+                    doc.addImage(imgData, outputFormatForPdf === 'image/png' ? 'PNG' : 'JPEG', xOffset, yOffset, imgWidth, imgHeight);
+                }
+
+                const baseFilename = imageOutputFilenameInput.value.trim() || 'stitched_image';
+                const pdfFileName = sanitizeImageFileName(`${baseFilename}_${Date.now()}`, '.pdf');
+                return { data: doc.output('datauristring'), fileName: pdfFileName };
+            }
+
+            function handleImageFiles(filesArray) {
+                let currentFileObjects = [];
+                let warnings = [];
+
+                if (filesArray.length > IMAGE_MAX_FILES) {
+                    warnings.push(`Too many files. Only the first ${IMAGE_MAX_FILES} will be processed.`);
+                    filesArray.splice(IMAGE_MAX_FILES);
+                }
+
+                filesArray.forEach(file => {
+                    if (!IMAGE_VALID_MIME_TYPES.includes(file.type)) {
+                        warnings.push(`File "${file.name}" (${file.type}) is not a supported type (JPG, PNG) and will be ignored.`);
+                        return;
+                    }
+                    if (file.size > IMAGE_MAX_FILE_SIZE_BYTES) {
+                        warnings.push(`File "${file.name}" (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds ${IMAGE_MAX_FILE_SIZE_MB}MB and will be ignored.`);
+                        return;
+                    }
+                    currentFileObjects.push({
+                        file: file,
+                        id: crypto.randomUUID(),
+                        rotation: 0,
+                        originalName: file.name,
+                        originalType: file.type
+                    });
+                });
+
+                imageSelectedFileObjects = currentFileObjects;
+
+                if (warnings.length > 0) {
+                    updateImageStatus(warnings.join(' '), true);
+                } else if (imageSelectedFileObjects.length > 0) {
+                    updateImageStatus(`${imageSelectedFileObjects.length} valid image(s) selected. Ready to stitch.`);
+                } else {
+                    updateImageStatus('No valid images selected. Please select JPG or PNG images within size limits.', true);
+                }
+
+                displayImagePreviews();
+                imageStitchButton.disabled = imageSelectedFileObjects.length === 0;
+                imageStitchedImageContainerOuter.classList.add('hidden');
+                imageViewLargerButton.classList.add('hidden');
+                imageDownloadLinkContainer.classList.add('hidden');
+                imageStitchedImage.src = '#';
+                saveImageState();
+            }
+
+            // Image Settings Persistence
+            function saveImageSettings() {
+                localStorage.setItem(IMAGE_LS_ALIGNMENT_KEY, imageAlignmentSelect.value);
+                localStorage.setItem(IMAGE_LS_QUALITY_KEY, imageQualitySlider.value);
+                localStorage.setItem(IMAGE_LS_DIRECTION_KEY, imageStitchDirectionSelect.value);
+                localStorage.setItem(IMAGE_LS_SPACING_KEY, imageSpacingInput.value);
+                localStorage.setItem(IMAGE_LS_OUTPUT_FORMAT_KEY, imageOutputFormatSelect.value);
+                localStorage.setItem(IMAGE_LS_BG_COLOR_KEY, imageBackgroundColorInput.value);
+                localStorage.setItem(IMAGE_LS_PDF_PAGE_SIZE_KEY, imagePdfPageSizeSelect.value);
+                localStorage.setItem(IMAGE_LS_WATERMARK_TEXT_KEY, imageWatermarkTextInput.value);
+                localStorage.setItem(IMAGE_LS_WATERMARK_POSITION_KEY, imageWatermarkPositionSelect.value);
+            }
+
+            function loadImageSettings() {
+                imageAlignmentSelect.value = localStorage.getItem(IMAGE_LS_ALIGNMENT_KEY) || "center";
+                imageQualitySlider.value = localStorage.getItem(IMAGE_LS_QUALITY_KEY) || "0.95";
+                imageStitchDirectionSelect.value = localStorage.getItem(IMAGE_LS_DIRECTION_KEY) || "vertical";
+                imageSpacingInput.value = localStorage.getItem(IMAGE_LS_SPACING_KEY) || "0";
+                imageOutputFormatSelect.value = localStorage.getItem(IMAGE_LS_OUTPUT_FORMAT_KEY) || "image/jpeg";
+                imageBackgroundColorInput.value = localStorage.getItem(IMAGE_LS_BG_COLOR_KEY) || "#FFFFFF";
+                imagePdfPageSizeSelect.value = localStorage.getItem(IMAGE_LS_PDF_PAGE_SIZE_KEY) || "a4";
+                imageWatermarkTextInput.value = localStorage.getItem(IMAGE_LS_WATERMARK_TEXT_KEY) || "";
+                imageWatermarkPositionSelect.value = localStorage.getItem(IMAGE_LS_WATERMARK_POSITION_KEY) || "bottom-right";
+
+                imageQualityValueSpan.textContent = parseFloat(imageQualitySlider.value).toFixed(2);
+                updateImageOutputFormatUI();
+            }
+
+            // Image Processing Functions
+            async function getRotatedImageBitmap(imageBitmap, degrees, maxDimension = IMAGE_MAX_ROTATION_PREVIEW_DIMENSION) {
+                if (degrees === 0) return imageBitmap;
+
+                let srcBitmap = imageBitmap;
+                if (imageBitmap.width > maxDimension || imageBitmap.height > maxDimension) {
+                    const scale = maxDimension / Math.max(imageBitmap.width, imageBitmap.height);
+                    const tempCanvasScaled = document.createElement('canvas');
+                    tempCanvasScaled.width = imageBitmap.width * scale;
+                    tempCanvasScaled.height = imageBitmap.height * scale;
+                    const ctxScaled = tempCanvasScaled.getContext('2d');
+                    ctxScaled.drawImage(imageBitmap, 0, 0, tempCanvasScaled.width, tempCanvasScaled.height);
+                    srcBitmap = await createImageBitmap(tempCanvasScaled);
+                }
+
+                const radians = degrees * Math.PI / 180;
+                const absCos = Math.abs(Math.cos(radians));
+                const absSin = Math.abs(Math.sin(radians));
+
+                const newWidth = Math.floor(srcBitmap.width * absCos + srcBitmap.height * absSin);
+                const newHeight = Math.floor(srcBitmap.height * absCos + srcBitmap.width * absSin);
+
+                const tempCanvasRotated = document.createElement('canvas');
+                tempCanvasRotated.width = newWidth;
+                tempCanvasRotated.height = newHeight;
+                const ctxRotated = tempCanvasRotated.getContext('2d');
+
+                ctxRotated.translate(newWidth / 2, newHeight / 2);
+                ctxRotated.rotate(radians);
+                ctxRotated.drawImage(srcBitmap, -srcBitmap.width / 2, -srcBitmap.height / 2);
+
+                const rotatedBitmap = await createImageBitmap(tempCanvasRotated);
+                if (srcBitmap !== imageBitmap) srcBitmap.close();
+                return rotatedBitmap;
+            }
+
+            async function updateImageProgress(message, current, total) {
+                updateImageStatus(`${message} (${current}/${total})`);
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+
+            async function updateImageQualityPreview() {
+                if (!imageQualityPreviewCanvas || imageSelectedFileObjects.length === 0 || imageOutputFormatSelect.value !== 'image/jpeg') {
+                    if(imageQualityPreviewContainer) imageQualityPreviewContainer.classList.add('hidden');
+                    return;
+                }
+
+                try {
+                    const ctx = imageQualityPreviewCanvas.getContext('2d');
+                    const firstFileObj = imageSelectedFileObjects[0];
+                    const imageToPreview = firstFileObj.file;
+
+                    const bitmap = await createImageBitmap(imageToPreview);
+
+                    ctx.clearRect(0, 0, imageQualityPreviewCanvas.width, imageQualityPreviewCanvas.height);
+
+                    const previewWidth = imageQualityPreviewCanvas.width;
+                    const previewHeight = imageQualityPreviewCanvas.height;
+                    let drawWidth, drawHeight, offsetX, offsetY;
+
+                    if (bitmap.width / bitmap.height > previewWidth / previewHeight) {
+                        drawWidth = previewWidth;
+                        drawHeight = (bitmap.height * previewWidth) / bitmap.width;
+                    } else {
+                        drawHeight = previewHeight;
+                        drawWidth = (bitmap.width * previewHeight) / bitmap.height;
+                    }
+                    offsetX = (previewWidth - drawWidth) / 2;
+                    offsetY = (previewHeight - drawHeight) / 2;
+
+                    ctx.drawImage(bitmap, offsetX, offsetY, drawWidth, drawHeight);
+
+                    const dataUrl = imageQualityPreviewCanvas.toDataURL('image/jpeg', parseFloat(imageQualitySlider.value));
+
+                    ctx.clearRect(0, 0, previewWidth, previewHeight);
+                    const qualityImage = new Image();
+                    qualityImage.onload = () => {
+                        ctx.drawImage(qualityImage, 0, 0, previewWidth, previewHeight);
+                        if(imageQualityPreviewContainer) imageQualityPreviewContainer.classList.remove('hidden');
+                    };
+                    qualityImage.onerror = () => {
+                         if(imageQualityPreviewContainer) imageQualityPreviewContainer.classList.add('hidden');
+                    }
+                    qualityImage.src = dataUrl;
+
+                    bitmap.close();
+                } catch (error) {
+                    console.error("Error updating quality preview:", error);
+                    if(imageQualityPreviewContainer) imageQualityPreviewContainer.classList.add('hidden');
+                }
+            }
+
+            // Image Live Stitched Preview
+            async function updateImageLivePreview() {
+                if (imageSelectedFileObjects.length === 0 || !imageLivePreviewCanvas) {
+                    if (imageLivePreviewContainer) imageLivePreviewContainer.classList.add('hidden');
+                    return;
+                }
+
+                const ctx = imageLivePreviewCanvas.getContext('2d');
+                const spacing = parseInt(imageSpacingInput.value) || 0;
+                const direction = imageStitchDirectionSelect.value;
+                const alignment = imageAlignmentSelect.value;
+                const bgColor = imageOutputFormatSelect.value === 'image/png' ? imageBackgroundColorInput.value : '#FFFFFF';
+                const watermarkText = imageWatermarkTextInput.value.trim();
+                const watermarkPos = imageWatermarkPositionSelect.value;
+
+                try {
+                    const images = await Promise.all(imageSelectedFileObjects.map(async fileObj => {
+                        const bitmap = await createImageBitmap(fileObj.file, {
+                            resizeWidth: Math.min(fileObj.file.width, IMAGE_MAX_LIVE_PREVIEW_IMAGE_DIM),
+                            resizeHeight: Math.min(fileObj.file.height, IMAGE_MAX_LIVE_PREVIEW_IMAGE_DIM),
+                            resizeQuality: 'low'
+                        });
+                        const rotatedBitmap = await getRotatedImageBitmap(bitmap, fileObj.rotation, IMAGE_MAX_LIVE_PREVIEW_IMAGE_DIM);
+                        return { ...fileObj, bitmap: rotatedBitmap };
+                    }));
+
+                    if (images.length === 0) {
+                        if (imageLivePreviewContainer) imageLivePreviewContainer.classList.add('hidden');
+                        return;
+                    }
+
+                    let totalWidth = direction === 'vertical'
+                        ? Math.max(...images.map(img => img.bitmap.width))
+                        : images.reduce((sum, img) => sum + img.bitmap.width, 0) + Math.max(0, images.length - 1) * spacing;
+                    let totalHeight = direction === 'vertical'
+                        ? images.reduce((sum, img) => sum + img.bitmap.height, 0) + Math.max(0, images.length - 1) * spacing
+                        : Math.max(...images.map(img => img.bitmap.height));
+
+                    if (totalWidth === 0 || totalHeight === 0) {
+                         if (imageLivePreviewContainer) imageLivePreviewContainer.classList.add('hidden');
+                         return;
+                    }
+
+                    const scale = Math.min(IMAGE_MAX_LIVE_PREVIEW_WIDTH / totalWidth, 200 / totalHeight, 1);
+                    imageLivePreviewCanvas.width = totalWidth * scale;
+                    imageLivePreviewCanvas.height = totalHeight * scale;
+
+                    ctx.fillStyle = bgColor;
+                    ctx.fillRect(0, 0, imageLivePreviewCanvas.width, imageLivePreviewCanvas.height);
+
+                    let currentOffset = 0;
+                    images.forEach(img => {
+                        const scaledWidth = img.bitmap.width * scale;
+                        const scaledHeight = img.bitmap.height * scale;
+                        let x = 0, y = 0;
+
+                        if (direction === 'vertical') {
+                            y = currentOffset;
+                            if (alignment === 'center') x = (imageLivePreviewCanvas.width - scaledWidth) / 2;
+                            else if (alignment === 'right_bottom') x = imageLivePreviewCanvas.width - scaledWidth;
+                        } else {
+                            x = currentOffset;
+                            if (alignment === 'center') y = (imageLivePreviewCanvas.height - scaledHeight) / 2;
+                            else if (alignment === 'right_bottom') y = imageLivePreviewCanvas.height - scaledHeight;
+                        }
+                        ctx.drawImage(img.bitmap, x, y, scaledWidth, scaledHeight);
+                        currentOffset += (direction === 'vertical' ? scaledHeight : scaledWidth) + (spacing * scale);
+                        img.bitmap.close();
+                    });
+
+                    if (watermarkText) {
+                        const fontSize = Math.max(10, Math.min(imageLivePreviewCanvas.height * 0.05, imageLivePreviewCanvas.width * 0.1));
+                        ctx.font = `bold ${fontSize}px Inter`;
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'alphabetic';
+                        const textMetrics = ctx.measureText(watermarkText);
+                        const textWidth = textMetrics.width;
+                        const textHeight = fontSize;
+                        const padding = Math.max(5, fontSize * 0.2);
+
+                        let x, y;
+                        switch (watermarkPos) {
+                            case 'bottom-right':
+                                x = imageLivePreviewCanvas.width - textWidth - padding;
+                                y = imageLivePreviewCanvas.height - padding;
+                                break;
+                            case 'bottom-left':
+                                x = padding;
+                                y = imageLivePreviewCanvas.height - padding;
+                                break;
+                            case 'top-right':
+                                x = imageLivePreviewCanvas.width - textWidth - padding;
+                                y = padding + textHeight * 0.8;
+                                break;
+                            case 'top-left':
+                                x = padding;
+                                y = padding + textHeight * 0.8;
+                                break;
+                            case 'center':
+                                x = (imageLivePreviewCanvas.width - textWidth) / 2;
+                                y = (imageLivePreviewCanvas.height + textHeight / 2) / 2;
+                                break;
+                        }
+                        ctx.fillText(watermarkText, x, y);
+                    }
+
+                    if (imageLivePreviewContainer) imageLivePreviewContainer.classList.remove('hidden');
+                } catch (error) {
+                    console.error("Error updating live preview:", error);
+                    if (imageLivePreviewContainer) imageLivePreviewContainer.classList.add('hidden');
+                }
+            }
+
+
+            // Image Event Listeners
+            imageQualitySlider.addEventListener('input', () => {
+                imageQualityValueSpan.textContent = parseFloat(imageQualitySlider.value).toFixed(2);
+                saveImageSettings();
+                updateImageQualityPreview();
+            });
+
+            [imageAlignmentSelect, imageStitchDirectionSelect, imageSpacingInput, imageOutputFormatSelect, imageBackgroundColorInput, imageWatermarkTextInput, imageWatermarkPositionSelect, imagePdfPageSizeSelect].forEach(el => {
+                if(el) {
+                    el.addEventListener('change', () => { saveImageSettings(); updateImageLivePreview(); });
+                    el.addEventListener('input', () => {
+                        saveImageSettings();
+                        clearTimeout(el.debounceTimer);
+                        el.debounceTimer = setTimeout(updateImageLivePreview, 300);
+                    });
+                }
+            });
+
+            imageOutputFormatSelect.addEventListener('change', () => {
+                updateImageOutputFormatUI();
+                saveImageSettings();
+                updateImageQualityPreview();
+            });
+
+            imageClearImagesButton.addEventListener('click', () => clearOnlyImages(false));
+            imageUndoButton.addEventListener('click', undoImageOperation);
+            imageRedoButton.addEventListener('click', redoImageOperation);
+
+            imageDropZone.addEventListener('click', () => imageFilesInput.click());
+            imageDropZone.addEventListener('dragover', (e) => { e.preventDefault(); imageDropZone.classList.add('bg-indigo-100', 'border-indigo-600'); });
+            imageDropZone.addEventListener('dragleave', () => imageDropZone.classList.remove('bg-indigo-100', 'border-indigo-600'));
+            imageDropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                imageDropZone.classList.remove('bg-indigo-100', 'border-indigo-600');
+                if (e.dataTransfer.files) handleImageFiles(Array.from(e.dataTransfer.files));
+            });
+            imageFilesInput.addEventListener('change', (e) => handleImageFiles(Array.from(e.target.files)));
+            imageResetButton.addEventListener('click', () => resetImageUI(false));
+
+            imagePreviewContainer.addEventListener('click', (event) => {
+                const target = event.target;
+                const fileId = target.dataset.id || target.closest('.control-btn')?.dataset.id || target.closest('.remove-btn')?.dataset.id;
+                if (!fileId) return;
+
+                const fileObj = imageSelectedFileObjects.find(f => f.id === fileId);
+                if (!fileObj) return;
+
+                let stateChanged = false;
+
+                if (target.classList.contains('remove-btn') || target.closest('.remove-btn')) {
+                    imageSelectedFileObjects = imageSelectedFileObjects.filter(f => f.id !== fileId);
+                    updateImageStatus(imageSelectedFileObjects.length > 0 ? `${imageSelectedFileObjects.length} image(s) remaining.` : 'All images removed.');
+                    stateChanged = true;
+                } else if (target.classList.contains('rotate-left-btn') || target.closest('.rotate-left-btn')) {
+                    fileObj.rotation = (fileObj.rotation - 90 + 360) % 360;
+                    stateChanged = true;
+                } else if (target.classList.contains('rotate-right-btn') || target.closest('.rotate-right-btn')) {
+                    fileObj.rotation = (fileObj.rotation + 90) % 360;
+                    stateChanged = true;
+                } else if (target.classList.contains('crop-btn') || target.closest('.crop-btn')) {
+                    openImageCropModal(fileObj);
+                } else if (target.classList.contains('brightness-btn') || target.closest('.brightness-btn')) {
+                    adjustImageBrightness(fileObj);
+                }
+
+                if (stateChanged) {
+                    displayImagePreviews();
+                    imageStitchButton.disabled = imageSelectedFileObjects.length === 0;
+                    saveImageState();
+                }
+            });
+
+            // Image Crop Functionality
+            function openImageCropModal(fileObj) {
+                if (imageCropperInstance) {
+                    imageCropperInstance.destroy();
+                }
+                imageCropElement.src = URL.createObjectURL(fileObj.file);
+                imageCropModal.classList.remove('hidden');
+
+                imageCropElement.onload = () => {
+                     URL.revokeObjectURL(imageCropElement.src);
+                     imageCropperInstance = new Cropper(imageCropElement, {
+                        aspectRatio: NaN,
+                        viewMode: 1,
+                        background: false,
+                        modal: true,
+                        guides: true,
+                        center: true,
+                        movable: true,
+                        rotatable: true,
+                        scalable: true,
+                        zoomable: true,
+                        zoomOnWheel: true,
+                    });
+                }
+                imageCropElement.onerror = () => {
+                    updateImageStatus(`Error loading image ${fileObj.file.name} for cropping.`, true);
+                    imageCropModal.classList.add('hidden');
+                }
+
+
+                imageCropConfirmButton.onclick = async () => {
+                    if (!imageCropperInstance) return;
+                    const croppedCanvas = imageCropperInstance.getCroppedCanvas();
+                    const originalFile = imageSelectedFileObjects.find(f => f.id === fileObj.id).file;
+
+                    croppedCanvas.toBlob(async (blob) => {
+                        if (blob) {
+                            const croppedFile = new File([blob], `cropped_${originalFile.name}`, { type: blob.type || originalFile.type });
+                            fileObj.file = croppedFile;
+                            displayImagePreviews();
+                            saveImageState();
+                        } else {
+                            updateImageStatus('Failed to crop image. Blob creation failed.', true);
+                        }
+                        imageCropperInstance.destroy();
+                        imageCropperInstance = null;
+                        imageCropModal.classList.add('hidden');
+                    }, fileObj.originalType || fileObj.file.type);
+                };
+
+                imageCropCancelButton.onclick = () => {
+                    if (imageCropperInstance) {
+                        imageCropperInstance.destroy();
+                        imageCropperInstance = null;
+                    }
+                    imageCropModal.classList.add('hidden');
+                };
+            }
+
+            // Image Brightness Filter
+            async function adjustImageBrightness(fileObj, brightnessValue = 20) {
+                try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const bitmap = await createImageBitmap(fileObj.file);
+
+                    canvas.width = bitmap.width;
+                    canvas.height = bitmap.height;
+                    ctx.drawImage(bitmap, 0, 0);
+
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageData.data;
+                    for (let i = 0; i < data.length; i += 4) {
+                        data[i] = Math.min(255, data[i] + brightnessValue);
+                        data[i + 1] = Math.min(255, data[i + 1] + brightnessValue);
+                        data[i + 2] = Math.min(255, data[i + 2] + brightnessValue);
+                    }
+                    ctx.putImageData(imageData, 0, 0);
+
+                    const blob = await new Promise(resolve => canvas.toBlob(resolve, fileObj.originalType || fileObj.file.type));
+                    if (blob) {
+                        fileObj.file = new File([blob], `bright_${fileObj.originalName || fileObj.file.name}`, { type: blob.type });
+                        displayImagePreviews();
+                        saveImageState();
+                    } else {
+                         updateImageStatus('Failed to adjust brightness. Blob creation failed.', true);
+                    }
+                    bitmap.close();
+                } catch (error) {
+                    console.error("Error adjusting brightness:", error);
+                    updateImageStatus(`Error adjusting brightness for ${fileObj.file.name}.`, true);
+                }
+            }
+
+            // Image Improved Drag and Drop
+            imagePreviewContainer.addEventListener('dragstart', (event) => {
+                if (event.target.classList.contains('image-preview-item')) {
+                    imageDraggedItem = event.target;
+                    event.dataTransfer.setData('text/plain', event.target.dataset.id);
+                    setTimeout(() => event.target.classList.add('preview-item-dragging'), 0);
+                }
+            });
+
+            imagePreviewContainer.addEventListener('dragend', () => {
+                if (imageDraggedItem) {
+                    imageDraggedItem.classList.remove('preview-item-dragging');
+                    Array.from(imagePreviewContainer.children).forEach(child => child.classList.remove('preview-item-dragover'));
+                    imageDraggedItem = null;
+                }
+            });
+
+            imagePreviewContainer.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                const targetItem = event.target.closest('.image-preview-item');
+                if (targetItem && targetItem !== imageDraggedItem) {
+                    Array.from(imagePreviewContainer.children).forEach(child => {
+                        if (child !== targetItem) child.classList.remove('preview-item-dragover');
+                    });
+                    targetItem.classList.add('preview-item-dragover');
+                } else if (!targetItem && imageDraggedItem) {
+                     Array.from(imagePreviewContainer.children).forEach(child => child.classList.remove('preview-item-dragover'));
+                }
+            });
+
+            imagePreviewContainer.addEventListener('dragenter', (event) => {
+                event.preventDefault();
+                const targetItem = event.target.closest('.image-preview-item');
+                if (targetItem && targetItem !== imageDraggedItem) {
+                    targetItem.classList.add('preview-item-dragover');
+                }
+            });
+
+            imagePreviewContainer.addEventListener('dragleave', (event) => {
+                const targetItem = event.target.closest('.image-preview-item');
+                if (targetItem) {
+                    targetItem.classList.remove('preview-item-dragover');
+                }
+                if (event.target === imagePreviewContainer) {
+                     Array.from(imagePreviewContainer.children).forEach(child => child.classList.remove('preview-item-dragover'));
+                }
+            });
+
+            imagePreviewContainer.addEventListener('drop', (event) => {
+                event.preventDefault();
+                if (!imageDraggedItem) return;
+
+                const targetItem = event.target.closest('.image-preview-item');
+                imageDraggedItem.classList.remove('preview-item-dragging');
+                Array.from(imagePreviewContainer.children).forEach(child => child.classList.remove('preview-item-dragover'));
+
+                const draggedId = imageDraggedItem.dataset.id;
+                let targetId = targetItem ? targetItem.dataset.id : null;
+                let draggedIndex = imageSelectedFileObjects.findIndex(f => f.id === draggedId);
+
+                if (draggedIndex === -1) {
+                    imageDraggedItem = null;
+                    return;
+                }
+
+                const [draggedFileObject] = imageSelectedFileObjects.splice(draggedIndex, 1);
+
+                if (targetItem && targetItem !== imageDraggedItem) {
+                    const targetIndexInArray = imageSelectedFileObjects.findIndex(f => f.id === targetId);
+                    if (targetIndexInArray !== -1) {
+                        imageSelectedFileObjects.splice(targetIndexInArray, 0, draggedFileObject);
+                    } else {
+                        imageSelectedFileObjects.push(draggedFileObject);
+                    }
+                } else {
+                    imageSelectedFileObjects.push(draggedFileObject);
+                }
+                displayImagePreviews();
+                imageDraggedItem = null;
+                saveImageState();
+            });
+
+
+            imageStitchButton.addEventListener('click', async () => {
+                if (imageSelectedFileObjects.length === 0) {
+                    updateImageStatus('No images selected.', true); return;
+                }
+                saveImageSettings();
+
+                imageStitchButton.disabled = true; imageResetButton.disabled = true; imageClearImagesButton.disabled = true; imageUndoButton.disabled = true; imageRedoButton.disabled = true;
+                imageSpinner.classList.remove('hidden'); imageSpinner.classList.add('inline-block');
+                updateImageStatus('Processing... Initializing...');
+                imageStitchedImageContainerOuter.classList.add('hidden');
+                imageViewLargerButton.classList.add('hidden');
+                imageDownloadLinkContainer.classList.add('hidden');
+                cleanupImageCanvas();
+
+                const spacing = parseInt(imageSpacingInput.value) || 0;
+                const direction = imageStitchDirectionSelect.value;
+                const outputFormat = imageOutputFormatSelect.value;
+                const bgColor = outputFormat === 'image/png' ? imageBackgroundColorInput.value : '#FFFFFF';
+                const watermarkText = imageWatermarkTextInput.value.trim();
+                const watermarkPos = imageWatermarkPositionSelect.value;
+
+
+                try {
+                    const imageBitmapsPromises = imageSelectedFileObjects.map(async (fileObj, index) => {
+                        await updateImageProgress('Loading image', index + 1, imageSelectedFileObjects.length);
+                        try {
+                            let bitmap = await createImageBitmap(fileObj.file);
+                            if (fileObj.rotation !== 0) {
+                                await updateImageProgress(`Rotating image ${index + 1}`, index + 1, imageSelectedFileObjects.length);
+                                bitmap = await getRotatedImageBitmap(bitmap, fileObj.rotation);
+                            }
+                            return { ...fileObj, bitmap };
+                        } catch (err) {
+                            console.error(`Error processing image ${fileObj.file.name}:`, err);
+                            return { ...fileObj, error: true, message: `Failed to load/rotate ${fileObj.file.name}` };
+                        }
+                    });
+
+                    const processedImageObjects = await Promise.all(imageBitmapsPromises);
+                    const successfullyLoadedImages = processedImageObjects.filter(obj => obj.bitmap && !obj.error);
+                    const failedImages = processedImageObjects.filter(obj => obj.error);
+
+                    if (failedImages.length > 0) {
+                        updateImageStatus(`Some images failed: ${failedImages.map(f=>f.file.name).join(', ')}. Stitching ${successfullyLoadedImages.length} valid ones.`, true);
+                        if (successfullyLoadedImages.length === 0) throw new Error("No images could be processed.");
+                    }
+                    if (successfullyLoadedImages.length === 0) throw new Error("No valid images to stitch.");
+
+                    await updateImageProgress('Stitching images...', successfullyLoadedImages.length, successfullyLoadedImages.length);
+
+
+                    let canvasWidth = 0;
+                    let canvasHeight = 0;
+                    const numImages = successfullyLoadedImages.length;
+
+                    if (direction === 'vertical') {
+                        canvasHeight = successfullyLoadedImages.reduce((sum, img) => sum + img.bitmap.height, 0) + Math.max(0, numImages - 1) * spacing;
+                        canvasWidth = Math.max(...successfullyLoadedImages.map(img => img.bitmap.width));
+                    } else {
+                        canvasWidth = successfullyLoadedImages.reduce((sum, img) => sum + img.bitmap.width, 0) + Math.max(0, numImages - 1) * spacing;
+                        canvasHeight = Math.max(...successfullyLoadedImages.map(img => img.bitmap.height));
+                    }
+
+                    if (canvasWidth === 0 || canvasHeight === 0) throw new Error('Canvas dimensions are zero.');
+                    if (canvasWidth > IMAGE_MAX_CANVAS_DIMENSION || canvasHeight > IMAGE_MAX_CANVAS_DIMENSION) {
+                        throw new Error(`Combined dimensions (${canvasWidth}x${canvasHeight}) exceed limit (${IMAGE_MAX_CANVAS_DIMENSION}px). Consider reducing image count or size.`);
+                    }
+
+                    imageStitchedCanvas = document.createElement('canvas');
+                    imageStitchedCanvas.width = canvasWidth;
+                    imageStitchedCanvas.height = canvasHeight;
+                    const ctx = imageStitchedCanvas.getContext('2d');
+
+                    ctx.fillStyle = bgColor;
+                    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+                    let currentOffset = 0;
+                    const alignment = imageAlignmentSelect.value;
+
+                    successfullyLoadedImages.forEach(imgObj => {
+                        const img = imgObj.bitmap;
+                        let x = 0, y = 0;
+
+                        if (direction === 'vertical') {
+                            y = currentOffset;
+                            if (alignment === 'center') x = (canvasWidth - img.width) / 2;
+                            else if (alignment === 'right_bottom') x = canvasWidth - img.width;
+                            ctx.drawImage(img, x, y);
+                            currentOffset += img.height + spacing;
+                        } else {
+                            x = currentOffset;
+                            if (alignment === 'center') y = (canvasHeight - img.height) / 2;
+                            else if (alignment === 'right_bottom') y = canvasHeight - img.height;
+                            ctx.drawImage(img, x, y);
+                            currentOffset += img.width + spacing;
+                        }
+                        img.close();
+                    });
+
+                    if (watermarkText) {
+                        const fontSize = Math.max(16, Math.min(canvasHeight * 0.05, canvasWidth * 0.1, 60));
+                        ctx.font = `bold ${fontSize}px Inter`;
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'alphabetic';
+                        const textMetrics = ctx.measureText(watermarkText);
+                        const textWidth = textMetrics.width;
+                        const textHeight = fontSize;
+                        const padding = Math.max(10, fontSize * 0.3);
+
+                        let x, y;
+                        switch (watermarkPos) {
+                            case 'bottom-right':
+                                x = canvasWidth - textWidth - padding;
+                                y = canvasHeight - padding;
+                                break;
+                            case 'bottom-left':
+                                x = padding;
+                                y = canvasHeight - padding;
+                                break;
+                            case 'top-right':
+                                x = canvasWidth - textWidth - padding;
+                                y = padding + textHeight * 0.8;
+                                break;
+                            case 'top-left':
+                                x = padding;
+                                y = padding + textHeight * 0.8;
+                                break;
+                            case 'center':
+                                x = (canvasWidth - textWidth) / 2;
+                                y = (canvasHeight + textHeight / 2) / 2;
+                                break;
+                        }
+                        ctx.fillText(watermarkText, x, y);
+                    }
+
+
+                    const quality = outputFormat === 'image/jpeg' ? parseFloat(imageQualitySlider.value) : undefined;
+                    const dataUrl = imageStitchedCanvas.toDataURL(outputFormat, quality);
+                    imageStitchedImage.src = dataUrl;
+                    imageStitchedImageContainerOuter.classList.remove('hidden');
+                    imageViewLargerButton.classList.remove('hidden');
+
+                    const baseFilename = imageOutputFilenameInput.value.trim() || 'stitched_image';
+                    const fileExtension = outputFormat === 'image/png' ? '.png' : '.jpg';
+                    const imageFileName = sanitizeImageFileName(`${baseFilename}_${Date.now()}`, fileExtension);
+
+                    imageDownloadImageLink.href = dataUrl;
+                    imageDownloadImageLink.download = imageFileName;
+                    imageDownloadImageLink.textContent = `Download as ${fileExtension.substring(1).toUpperCase()}`;
+
+                    const { data: pdfDataUrl, fileName: pdfFileName } = generateImagePdf(imageStitchedCanvas);
+                    imageDownloadPdfLink.href = pdfDataUrl;
+                    imageDownloadPdfLink.download = pdfFileName;
+
+                    imageDownloadLinkContainer.classList.remove('hidden');
+                    updateImageStatus('Stitching complete! You can now view and download the image.');
+
+                } catch (error) {
+                    console.error('Error during stitching process:', error);
+                    updateImageStatus(`Error: ${error.message}. Check console.`, true);
+                    cleanupImageCanvas();
+                } finally {
+                    imageStitchButton.disabled = imageSelectedFileObjects.length === 0;
+                    imageResetButton.disabled = false;
+                    imageClearImagesButton.disabled = false;
+                    imageUndoButton.disabled = imageHistoryIndex === 0;
+                    imageRedoButton.disabled = imageHistoryIndex >= imageHistory.length - 1;
+                    imageSpinner.classList.add('hidden'); imageSpinner.classList.remove('inline-block');
+                }
+            });
+
+            // Image Modal Event Listeners
+            imageViewLargerButton.addEventListener('click', () => {
+                if (imageStitchedImage.src && imageStitchedImage.src !== '#' && !imageStitchedImage.src.startsWith(window.location.origin + '/#')) {
+                    imageModalImage.src = imageStitchedImage.src;
+                    imageDetailedPreviewModal.classList.remove('hidden');
+                } else {
+                    updateImageStatus('No image to view in detail. Please stitch images first.', true);
+                }
+            });
+
+            imageModalCloseButton.addEventListener('click', () => {
+                imageDetailedPreviewModal.classList.add('hidden');
+                imageModalImage.src = '#';
+            });
+
+            imageDetailedPreviewModal.addEventListener('click', (event) => {
+                if (event.target === imageDetailedPreviewModal) {
+                    imageDetailedPreviewModal.classList.add('hidden');
+                    imageModalImage.src = '#';
+                }
+            });
+
+
+            imageDownloadPdfLink.addEventListener('click', (e) => {
+                if (!imageStitchedCanvas) {
+                    e.preventDefault();
+                    updateImageStatus('No stitched image available for PDF. Please stitch images first.', true);
+                }
+            });
+            imageDownloadImageLink.addEventListener('click', (e) => {
+                if (!imageStitchedCanvas) {
+                    e.preventDefault();
+                    updateImageStatus('No stitched image available. Please stitch images first.', true);
+                }
+            });
+
+
+            // --- Global Keyboard Shortcuts ---
+            document.addEventListener('keydown', async (e) => {
+                const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.isContentEditable);
+                const isPdfModalOpen = !pdfPagePreviewModal.classList.contains('hidden') || !pdfPageContextMenu.classList.contains('hidden');
+                const isImageModalOpen = !imageDetailedPreviewModal.classList.contains('hidden') || !imageCropModal.classList.contains('hidden');
+                const isAnyModalOpen = isPdfModalOpen || isImageModalOpen || !confirmationModal.classList.contains('hidden');
+
+                if (e.key === 'Escape') {
+                    if (!pdfPagePreviewModal.classList.contains('hidden')) { closePdfPagePreviewModal(); return; }
+                    if (!pdfPageContextMenu.classList.contains('hidden')) { pdfPageContextMenu.classList.add('hidden'); if(pdfElementThatOpenedModal) {pdfElementThatOpenedModal.focus(); pdfElementThatOpenedModal = null;} return; }
+                    if (!imageDetailedPreviewModal.classList.contains('hidden')) { imageDetailedPreviewModal.classList.add('hidden'); imageModalImage.src = '#'; return; }
+                    if (!imageCropModal.classList.contains('hidden')) { if (imageCropperInstance) imageCropperInstance.destroy(); imageCropperInstance = null; imageCropModal.classList.add('hidden'); return; }
+                    if (!confirmationModal.classList.contains('hidden')) { confirmationModal.classList.add('hidden'); if (confirmResolve) confirmResolve(false); return; }
+                }
+
+                // PDF Specific Shortcuts (only when PDF tab is active and no modals are open)
+                if (!pdfToolsSection.classList.contains('hidden') && !isAnyModalOpen) {
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+                        if (isInputFocused && document.activeElement.type !== 'checkbox' && document.activeElement.type !== 'radio') return;
+                        e.preventDefault();
+                        if (pdfSelectAllPagesButton && !pdfSelectAllPagesButton.disabled) { pdfSelectAllPagesButton.click(); showAppMessage('All pages selected.', 'info'); }
+                    }
+                    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                        if (isInputFocused) return; e.preventDefault();
+                        if (pdfUndoButton && !pdfUndoButton.disabled) pdfUndoButton.click();
+                    }
+                    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                        if (isInputFocused) return; e.preventDefault();
+                        if (pdfRedoButton && !pdfRedoButton.disabled) pdfRedoButton.click();
+                    }
+                    else if (e.key === 'Delete' || e.key === 'Backspace') {
+                        if (isInputFocused) return;
+                        const selectedCheckboxes = Array.from(pdfPageThumbnailContainer.querySelectorAll('input[type="checkbox"]:checked'));
+                        if (selectedCheckboxes.length > 0 && pdfRemoveSelectedPagesButton && !pdfRemoveSelectedPagesButton.disabled) {
+                            e.preventDefault();
+                            if (await showConfirmation(`Delete ${selectedCheckboxes.length} page(s)?`)) await processPdfRemoveSelectedPages();
+                        }
+                    }
+                }
+
+                // Image Specific Shortcuts (only when Image tab is active and no modals are open)
+                if (!imageToolsSection.classList.contains('hidden') && !isAnyModalOpen) {
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+                        e.preventDefault();
+                        imageFilesInput.click();
+                    }
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'enter') {
+                         if (!imageStitchButton.disabled) {
+                            e.preventDefault();
+                            imageStitchButton.click();
+                        }
+                    }
+                     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                        e.preventDefault();
+                        if (!imageUndoButton.disabled) undoImageOperation();
+                    }
+                    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+                        e.preventDefault();
+                        if (!imageRedoButton.disabled) redoImageOperation();
+                    }
+                }
+            });
+
+            // --- Initializations ---
+            switchMainTab(tabPdfTools, pdfToolsSection); // Start with PDF Tools active
+            switchPdfSubTab(pdfTabMerge, pdfMergeSection); // Start PDF with Merge tab
+            if (!pdfSplitOptionsContainer.classList.contains('hidden')) updatePdfSplitInputStates(); else pdfExecuteSplitButton.disabled = true;
+
+            loadImageSettings(); // Load image settings from local storage
+            resetImageUI(true); // Reset Image UI on load, skip history save for initial state
+            saveImageState(); // Save the initial empty/loaded state for images
+
+            if (imageSelectedFileObjects.length > 0) {
+                updateImageQualityPreview();
+                updateImageLivePreview();
+            }
+        });
+    </script>
+</body>
+</html>
